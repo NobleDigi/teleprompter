@@ -86,7 +86,7 @@ input[type=color]{width:42px;height:32px;border:none;border-radius:8px;backgroun
 #scroll-container::-webkit-scrollbar{display:none}
 #script-body{white-space:pre-wrap;word-break:break-word;color:var(--script-color);font-weight:600;
   padding:45dvh 6vw 70dvh;margin:0 auto;transition:opacity .2s}
-#script-body span{transition:opacity .25s,color .25s}
+#script-body span{transition:color .25s;opacity:1!important}
 #script-body .stage{color:var(--stage-color)}
 /* the mirror wrapper flips the WHOLE reading surface */
 #mirror-wrap{flex:1;display:flex;flex-direction:column;min-height:0}
@@ -150,12 +150,12 @@ input[type=color]{width:42px;height:32px;border:none;border-radius:8px;backgroun
   </div>
   <input id="edit-name" placeholder="Script name" />
   <textarea id="edit-text" placeholder="Paste or dictate your script here..."></textarea>
-  <p class="hint">Anything in <b>[square brackets]</b> shows in orange as a stage direction. In voice mode you do not read it aloud; the prompter skips past it automatically.<br><br>
-  Voice commands: <b>"go top / restart"</b> = start of script &middot; <b>"go previous"</b> = back 2 sentences &middot; <b>"go next"</b> = ahead 2 sentences &middot; <b>"go current"</b> = start of current sentence &middot; <b>"jump back"</b> / <b>"jump next"</b> = previous / next paragraph. All work while paused. You can also drag the script with your finger; when you start speaking, it picks up from wherever you left it.</p>
   <div class="row">
     <button class="btn" onclick="startPrompter('auto')">&#9654; Auto Scroll</button>
     <button class="btn btn-accent" onclick="startPrompter('voice')">&#127908; Voice Follow</button>
   </div>
+  <p class="hint">Anything in <b>[square brackets]</b> shows in orange as a stage direction. In voice mode you do not read it aloud; the prompter skips past it automatically.<br><br>
+  Voice commands: <b>"go top / restart"</b> = start of script &middot; <b>"go previous"</b> = back 2 sentences &middot; <b>"go next"</b> = ahead 2 sentences &middot; <b>"go current"</b> = start of current sentence &middot; <b>"jump back"</b> / <b>"jump next"</b> = previous / next paragraph. All work while paused. You can also drag the script with your finger; when you start speaking, it picks up from wherever you left it.</p>
 </div>
 
 <!-- ================= SETTINGS SHEET ================= -->
@@ -266,19 +266,41 @@ input[type=color]{width:42px;height:32px;border:none;border-radius:8px;backgroun
 const LS_SCRIPTS = 'tp_scripts_v1';
 const LS_SETTINGS = 'tp_settings_v1';
 const LS_ACTIVE = 'tp_active_v1';
+const LS_PREVIOUS = 'tp_scripts_previous_v1';
 const DB_NAME = 'teleprompter_local_v2';
 const DB_STORE = 'backups';
 const DB_KEY = 'latest';
 let appReady = false;
 
+function normalizeScripts(value){
+  if(!Array.isArray(value)) return [];
+  return value
+    .filter(s => s && typeof s === 'object')
+    .map(s => ({
+      id:String(s.id || uid()),
+      name:typeof s.name === 'string' ? s.name : '',
+      text:typeof s.text === 'string' ? s.text : '',
+      updated:Number(s.updated) || Date.now()
+    }));
+}
+
 function loadScripts(){
-  try{ const a = JSON.parse(localStorage.getItem(LS_SCRIPTS)); return Array.isArray(a) ? a : []; }
-  catch(e){ return []; }
+  try{
+    const parsed = JSON.parse(localStorage.getItem(LS_SCRIPTS));
+    if(Array.isArray(parsed)) return normalizeScripts(parsed);
+    return normalizeScripts(JSON.parse(localStorage.getItem(LS_PREVIOUS)));
+  }catch(e){
+    try{ return normalizeScripts(JSON.parse(localStorage.getItem(LS_PREVIOUS))); }
+    catch(e2){ return []; }
+  }
 }
 function saveScripts(){
   let saved = false;
   try{
-    localStorage.setItem(LS_SCRIPTS, JSON.stringify(scripts));
+    const next = JSON.stringify(scripts);
+    const current = localStorage.getItem(LS_SCRIPTS);
+    if(current && current !== next) localStorage.setItem(LS_PREVIOUS, current);
+    localStorage.setItem(LS_SCRIPTS, next);
     localStorage.setItem(LS_ACTIVE, activeId || '');
     saved = true;
   }catch(e){
@@ -293,6 +315,7 @@ let activeId = (() => {
   try{ return localStorage.getItem(LS_ACTIVE) || null; }
   catch(e){ return null; }
 })();
+if(activeId && !scripts.some(s => s.id === activeId)) activeId = scripts[0] ? scripts[0].id : null;
 
 function openLocalDB(){
   return new Promise(resolve => {
@@ -319,7 +342,7 @@ function mirrorState(){
       tx.objectStore(DB_STORE).put({
         version:2,
         scripts:scripts,
-        settings:typeof settings === 'undefined' ? null : settings,
+        settings:settings,
         activeId:activeId,
         savedAt:Date.now()
       }, DB_KEY);
@@ -343,8 +366,9 @@ async function restoreLocalMirror(){
   });
   db.close();
   if(scripts.length) return;
-  if(!saved || !Array.isArray(saved.scripts) || !saved.scripts.length) return;
-  scripts = saved.scripts;
+  const recovered = normalizeScripts(saved && saved.scripts);
+  if(!recovered.length) return;
+  scripts = recovered;
   activeId = saved.activeId || scripts[0].id;
   if(saved.settings){
     settings = Object.assign({}, DEFAULTS, saved.settings);
@@ -398,18 +422,13 @@ async function importBackup(event){
   if(!file) return;
   try{
     const data = JSON.parse(await file.text());
+    const restored = normalizeScripts(data && data.scripts);
     if(!data || !Array.isArray(data.scripts)) throw new Error('Invalid backup');
-    const restored = data.scripts
-      .filter(s => s && typeof s.text === 'string')
-      .map(s => ({
-        id:String(s.id || uid()),
-        name:String(s.name || ''),
-        text:s.text,
-        updated:Number(s.updated) || Date.now()
-      }));
     if(!confirm('Restore ' + restored.length + ' script' + (restored.length === 1 ? '' : 's') + '? This replaces the scripts currently on this device.')) return;
     scripts = restored;
     activeId = data.activeId || (scripts[0] && scripts[0].id) || null;
+    editorLoadedId = null;
+    editorDirty = false;
     if(data.settings) settings = Object.assign({}, DEFAULTS, data.settings);
     saveScripts();
     try{ localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }catch(e){}
@@ -449,7 +468,14 @@ function renderLibrary(){
     del.className = 'icon-btn btn-danger'; del.innerHTML = '&#128465;'; del.title = 'Delete';
     del.onclick = () => {
       if(confirm('Delete "' + (s.name||'Untitled') + '"? This cannot be undone.')){
-        scripts = scripts.filter(x => x.id !== s.id); saveScripts(); renderLibrary();
+        scripts = scripts.filter(x => x.id !== s.id);
+        if(activeId === s.id){
+          activeId = scripts[0] ? scripts[0].id : null;
+          editorLoadedId = null;
+          editorDirty = false;
+        }
+        saveScripts();
+        renderLibrary();
       }
     };
     card.append(meta, dup, del);
@@ -465,14 +491,21 @@ function newScript(){
 
 /* ---------- Editor with autosave ---------- */
 let saveTimer = null;
+let editorLoadedId = null;
+let editorDirty = false;
 function openEditor(id){
   activeId = id;
   try{ localStorage.setItem(LS_ACTIVE, id); }catch(e){}
   const s = getActive(); if(!s) return;
   document.getElementById('edit-name').value = s.name;
   document.getElementById('edit-text').value = s.text;
+  editorLoadedId = id;
+  editorDirty = false;
   document.getElementById('lib-view').classList.add('hidden');
-  document.getElementById('edit-view').classList.remove('hidden');
+  const editor = document.getElementById('edit-view');
+  editor.classList.remove('hidden');
+  editor.scrollTop = 0;
+  requestAnimationFrame(() => { editor.scrollTop = 0; });
 }
 function closeEditor(){
   flushSave();
@@ -481,17 +514,23 @@ function closeEditor(){
   renderLibrary();
 }
 function scheduleSave(){
+  editorDirty = true;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushSave, 200);
 }
 function flushSave(){
   clearTimeout(saveTimer);
+  if(!editorDirty || editorLoadedId !== activeId) return;
   const s = getActive(); if(!s) return;
   const name = document.getElementById('edit-name').value;
   const text = document.getElementById('edit-text').value;
-  if(s.name === name && s.text === text) return;
+  if(s.name === name && s.text === text){
+    editorDirty = false;
+    return;
+  }
   s.name = name; s.text = text; s.updated = Date.now();
   saveScripts();
+  editorDirty = false;
   const dot = document.getElementById('saved-dot');
   dot.classList.add('show');
   setTimeout(() => dot.classList.remove('show'), 1200);
@@ -664,7 +703,7 @@ let recogFatal = false;
 let restartTimestamps = [];
 let prompterOpen = false;
 let startInProgress = false;
-let missBuffer = [];
+let spokenBuffer = [];
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -686,6 +725,7 @@ function buildScript(rawText){
   lastCurrentEl = null;
   sentenceStarts = [0];
   paragraphStarts = [0];
+  spokenBuffer.length = 0;
   let newSentence = false;
   let newParagraph = false;
 
@@ -724,7 +764,7 @@ function buildScript(rawText){
   body.appendChild(frag);
 }
 
-/* ---------- Voice matching (ported, proven in Safari) ---------- */
+/* ---------- Voice matching: sequential first, 3-word confirmation to recover ---------- */
 function wordsClose(a, b){
   if(a === b) return true;
   if(a.length >= 4 && b.length >= 4){
@@ -733,51 +773,47 @@ function wordsClose(a, b){
   }
   return false;
 }
-function matchSpokenWord(spoken){
-  const LOOKAHEAD = 14;
-  const end = Math.min(scriptWordEls.length, matchIndex + LOOKAHEAD);
-  for(let i = matchIndex; i < end; i++){
-    if(wordsClose(scriptWordEls[i].dataset.norm, spoken)){
-      for(let j = matchIndex; j <= i; j++){
-        scriptWordEls[j].style.opacity = '0.35';
-        scriptWordEls[j].style.color = '';
-      }
-      if(lastCurrentEl) lastCurrentEl.style.color = '';
-      const cur = scriptWordEls[i];
-      cur.style.opacity = '1';
-      cur.style.color = 'var(--good)';
-      lastCurrentEl = cur;
-      matchIndex = i + 1;
-      missBuffer.length = 0;
-      setFollowTarget(cur);
-      return true;
-    }
+function setCurrentWord(index){
+  if(index < 0 || index >= scriptWordEls.length) return false;
+  if(lastCurrentEl) lastCurrentEl.style.color = '';
+  const cur = scriptWordEls[index];
+  cur.style.color = 'var(--good)';
+  lastCurrentEl = cur;
+  matchIndex = index + 1;
+  setFollowTarget(cur);
+  return true;
+}
+function phraseMatchesAt(start, phrase){
+  if(start < 0 || start + phrase.length > scriptWordEls.length) return false;
+  for(let p = 0; p < phrase.length; p++){
+    if(!wordsClose(scriptWordEls[start + p].dataset.norm, phrase[p])) return false;
   }
-  // ----- backward rescue -----
-  // Forward match failed. If the LAST TWO unmatched spoken words appear
-  // in sequence within the previous ~45 script words, the reader has
-  // backed up to re-read a sentence — rewind there. Two-word requirement
-  // stops common words ("the", "and") from yanking position backward.
-  missBuffer.push(spoken);
-  if(missBuffer.length > 2) missBuffer.shift();
-  if(missBuffer.length === 2){
-    const lo = Math.max(0, matchIndex - 45);
-    for(let i = matchIndex - 2; i >= lo; i--){
-      if(wordsClose(scriptWordEls[i].dataset.norm, missBuffer[0]) &&
-         wordsClose(scriptWordEls[i+1].dataset.norm, missBuffer[1])){
-        for(let j = i; j < scriptWordEls.length; j++){
-          scriptWordEls[j].style.opacity = '';
-          scriptWordEls[j].style.color = '';
-        }
-        if(lastCurrentEl) lastCurrentEl.style.color = '';
-        const cur = scriptWordEls[i+1];
-        cur.style.opacity = '1';
-        cur.style.color = 'var(--good)';
-        lastCurrentEl = cur;
-        matchIndex = i + 2;
-        missBuffer.length = 0;
-        setFollowTarget(cur);
-        return true;
+  return true;
+}
+function matchSpokenWord(spoken){
+  if(matchIndex >= scriptWordEls.length) return false;
+
+  // The expected next word always wins. A repeated word farther down the
+  // script can therefore never pull the prompter forward by itself.
+  if(wordsClose(scriptWordEls[matchIndex].dataset.norm, spoken)){
+    spokenBuffer.length = 0;
+    return setCurrentWord(matchIndex);
+  }
+
+  // If recognition misses a word, do not move on a guess. Wait until the
+  // last three spoken words match three adjacent script words, then choose
+  // the nearest match within a small recovery window.
+  const CONFIRM_WORDS = 3;
+  const MAX_FORWARD_SKIP = 8;
+  spokenBuffer.push(spoken);
+  if(spokenBuffer.length > CONFIRM_WORDS) spokenBuffer.shift();
+  if(spokenBuffer.length === CONFIRM_WORDS){
+    const end = Math.min(scriptWordEls.length - CONFIRM_WORDS, matchIndex + MAX_FORWARD_SKIP);
+    for(let i = matchIndex; i <= end; i++){
+      if(phraseMatchesAt(i, spokenBuffer)){
+        const confirmedIndex = i + CONFIRM_WORDS - 1;
+        spokenBuffer.length = 0;
+        return setCurrentWord(confirmedIndex);
       }
     }
   }
@@ -802,12 +838,11 @@ function currentSentenceIdx(){
 function jumpToWord(idx){
   if(scriptWordEls.length === 0) return;
   idx = Math.max(0, Math.min(idx, scriptWordEls.length - 1));
-  scriptWordEls.forEach((el, i) => {
-    el.style.opacity = i < idx ? '0.35' : '';
-    el.style.color = '';
-  });
-  lastCurrentEl = null;
+  scriptWordEls.forEach(el => { el.style.opacity = ''; el.style.color = ''; });
+  lastCurrentEl = scriptWordEls[idx];
+  lastCurrentEl.style.color = 'var(--good)';
   matchIndex = idx;
+  spokenBuffer.length = 0;
   setFollowTarget(scriptWordEls[idx]);
   // if paused (or between matches), move the view immediately
   const container = document.getElementById('scroll-container');
@@ -1002,7 +1037,10 @@ function exitPrompter(){
   stopVoiceRecognition();
   releaseWakeLock();
   document.getElementById('prompter-view').classList.add('hidden');
-  document.getElementById('edit-view').classList.remove('hidden');
+  const editor = document.getElementById('edit-view');
+  editor.classList.remove('hidden');
+  editor.scrollTop = 0;
+  requestAnimationFrame(() => { editor.scrollTop = 0; });
 }
 
 function togglePlay(){
@@ -1029,6 +1067,7 @@ function restartPrompterText(){
   currentScrollY = 0;
   targetScrollY = null;
   matchIndex = 0;
+  spokenBuffer.length = 0;
   if(lastCurrentEl){ lastCurrentEl.style.color = ''; lastCurrentEl = null; }
   scriptWordEls.forEach(el => { el.style.opacity = ''; el.style.color = ''; });
   positionCueLine();
@@ -1069,12 +1108,11 @@ function reanchorToViewport(){
     if(scriptWordEls[i].offsetTop >= anchorY){ idx = i; break; }
   }
   if(idx < 0) idx = scriptWordEls.length - 1;
-  scriptWordEls.forEach((el, i) => {
-    el.style.opacity = i < idx ? '0.35' : '';
-    el.style.color = '';
-  });
-  lastCurrentEl = null;
+  scriptWordEls.forEach(el => { el.style.opacity = ''; el.style.color = ''; });
+  lastCurrentEl = scriptWordEls[idx];
+  lastCurrentEl.style.color = 'var(--good)';
   matchIndex = idx;
+  spokenBuffer.length = 0;
   targetScrollY = null; // stay where the user put it until they speak
   toast('Picking up from here');
 }

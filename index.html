@@ -764,7 +764,7 @@ function buildScript(rawText){
   body.appendChild(frag);
 }
 
-/* ---------- Voice matching: sequential first, 3-word confirmation to recover ---------- */
+/* ---------- Voice matching: responsive nearby, confirmed farther away ---------- */
 function wordsClose(a, b){
   if(a === b) return true;
   if(a.length >= 4 && b.length >= 4){
@@ -790,31 +790,75 @@ function phraseMatchesAt(start, phrase){
   }
   return true;
 }
+function findConfirmedRecovery(phrase){
+  const FORWARD_LIMIT = 14;
+  const BACKWARD_LIMIT = 45;
+  let forward = -1;
+  let backward = -1;
+
+  const forwardEnd = Math.min(
+    scriptWordEls.length - phrase.length,
+    matchIndex + FORWARD_LIMIT
+  );
+  for(let i = matchIndex; i <= forwardEnd; i++){
+    if(phraseMatchesAt(i, phrase)){ forward = i; break; }
+  }
+
+  const backwardStart = Math.min(matchIndex - phrase.length, scriptWordEls.length - phrase.length);
+  const backwardEnd = Math.max(0, matchIndex - BACKWARD_LIMIT);
+  for(let i = backwardStart; i >= backwardEnd; i--){
+    if(phraseMatchesAt(i, phrase)){ backward = i; break; }
+  }
+
+  if(forward < 0) return backward;
+  if(backward < 0) return forward;
+  const forwardDistance = forward - matchIndex;
+  const backwardDistance = matchIndex - (backward + phrase.length);
+  return backwardDistance < forwardDistance ? backward : forward;
+}
 function matchSpokenWord(spoken){
   if(matchIndex >= scriptWordEls.length) return false;
 
-  // The expected next word always wins. A repeated word farther down the
-  // script can therefore never pull the prompter forward by itself.
+  // Normal reading remains immediate.
   if(wordsClose(scriptWordEls[matchIndex].dataset.norm, spoken)){
     spokenBuffer.length = 0;
     return setCurrentWord(matchIndex);
   }
 
-  // If recognition misses a word, do not move on a guess. Wait until the
-  // last three spoken words match three adjacent script words, then choose
-  // the nearest match within a small recovery window.
-  const CONFIRM_WORDS = 3;
-  const MAX_FORWARD_SKIP = 8;
+  // Missing one or two recognized words should not make the display lag.
+  const NEAR_SKIP = 2;
+  const SINGLE_LOOKAHEAD = 14;
+  const singleMatches = [];
+  const singleEnd = Math.min(scriptWordEls.length, matchIndex + SINGLE_LOOKAHEAD + 1);
+  for(let i = matchIndex + 1; i < singleEnd; i++){
+    if(wordsClose(scriptWordEls[i].dataset.norm, spoken)) singleMatches.push(i);
+  }
+  if(singleMatches.length){
+    const nearest = singleMatches[0];
+    if(nearest - matchIndex <= NEAR_SKIP ||
+       (spoken.length >= 6 && singleMatches.length === 1)){
+      spokenBuffer.length = 0;
+      return setCurrentWord(nearest);
+    }
+  }
+
+  // Larger forward moves and all backward moves require a phrase. Usually
+  // two words are enough; an especially vague two-short-word phrase waits
+  // for a third word before relocating.
   spokenBuffer.push(spoken);
-  if(spokenBuffer.length > CONFIRM_WORDS) spokenBuffer.shift();
-  if(spokenBuffer.length === CONFIRM_WORDS){
-    const end = Math.min(scriptWordEls.length - CONFIRM_WORDS, matchIndex + MAX_FORWARD_SKIP);
-    for(let i = matchIndex; i <= end; i++){
-      if(phraseMatchesAt(i, spokenBuffer)){
-        const confirmedIndex = i + CONFIRM_WORDS - 1;
-        spokenBuffer.length = 0;
-        return setCurrentWord(confirmedIndex);
-      }
+  if(spokenBuffer.length > 3) spokenBuffer.shift();
+  let confirmLength = 2;
+  if(spokenBuffer.length >= 2){
+    const pair = spokenBuffer.slice(-2);
+    if(pair.every(w => w.length <= 3)) confirmLength = 3;
+  }
+  if(spokenBuffer.length >= confirmLength){
+    const phrase = spokenBuffer.slice(-confirmLength);
+    const recovery = findConfirmedRecovery(phrase);
+    if(recovery >= 0){
+      const confirmedIndex = recovery + phrase.length - 1;
+      spokenBuffer.length = 0;
+      return setCurrentWord(confirmedIndex);
     }
   }
   return false;
@@ -985,8 +1029,7 @@ async function startPrompter(mode){
 
   requestWakeLock();
 
-  // Ask for microphone access before showing the countdown. This prevents
-  // the iOS permission sheet from covering the first lines of the script.
+  // Ask for microphone access before showing the countdown.
   if(mode === 'voice'){
     const micReady = await prepareVoiceRecognition();
     if(!micReady || !prompterOpen){

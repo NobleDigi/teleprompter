@@ -1,1022 +1,1054 @@
 <!doctype html>
-<html lang="en" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>Voice Teleprompter (Standalone)</title>
-    <!-- iOS Standalone Web App Meta Tags -->
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-    <meta name="apple-mobile-web-app-title" content="Teleprompter" />
-    <meta name="theme-color" content="#000000" />
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-              'space-grotesk': ['Space Grotesk', 'sans-serif'],
-              'jetbrains-mono': ['JetBrains Mono', 'monospace'],
-              'playfair-display': ['Playfair Display', 'serif'],
-            }
-          }
-        }
-      }
-    </script>
-    <style>
-      /* Hide scrollbar for Chrome, Safari and Opera */
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
-      }
-      /* Hide scrollbar for IE, Edge and Firefox */
-      .no-scrollbar {
-        -ms-overflow-style: none;  /* IE and Edge */
-        scrollbar-width: none;  /* Firefox */
-      }
-      
-      /* Mirror horizontal transition */
-      .mirror-x {
-        transform: scaleX(-1);
-      }
-      
-      /* Safety area spacing for iPhones with notches */
-      .safe-pb {
-        padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
-      }
-      .safe-pt {
-        padding-top: calc(env(safe-area-inset-top) + 1rem);
-      }
-    </style>
-  </head>
-  <body class="bg-black text-white selection:bg-neutral-800 font-sans min-h-screen overflow-x-hidden">
-    <!-- SETUP / EDITOR VIEW -->
-    <div id="setup-view" class="max-w-xl mx-auto px-4 py-8 safe-pt safe-pb">
-      <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center space-x-2">
-          <div class="w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
-          <h1 class="text-2xl font-bold font-space-grotesk tracking-tight">Voice Teleprompter</h1>
-        </div>
-        <span class="text-xs font-mono px-2 py-1 bg-neutral-900 rounded border border-neutral-800 text-neutral-400">iOS standalone ready</span>
-      </div>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>Teleprompter</title>
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<meta name="apple-mobile-web-app-title" content="Prompter" />
+<meta name="theme-color" content="#000000" />
+<style>
+/* ============ SELF-CONTAINED: no CDNs, no web fonts, works offline ============ */
+:root{
+  --bg:#000; --panel:#141414; --panel2:#1e1e1e; --border:#2a2a2a;
+  --text:#fff; --dim:#9a9a9a; --accent:#ff9f0a; --good:#34d399; --bad:#f87171;
+  --script-color:#ffffff; --script-bg:#000000; --stage-color:#ff9f0a; --cue-color:#ff9f0a;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;overflow:hidden;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;touch-action:manipulation}
+input,textarea,select{font:inherit;color:inherit}
+.hidden{display:none!important}
 
-      <!-- Script Input Section -->
-      <div class="bg-neutral-950 border border-neutral-900 rounded-xl p-4 mb-6">
-        <label class="block text-xs font-mono uppercase tracking-wider text-neutral-400 mb-2">Paste script below</label>
-        <textarea 
-          id="script-input" 
-          class="w-full h-64 bg-black border border-neutral-900 rounded-lg p-3 text-white placeholder-neutral-700 focus:outline-none focus:border-neutral-700 font-sans resize-none text-base"
-          placeholder="Paste your presentation script, video outline, or keynote speech here..."
-        >Good morning, everyone. 
+/* ---------- Library / editor ---------- */
+#lib-view,#edit-view{height:100dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 24px)}
+.topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px}
+.topbar h1{font-size:20px;font-weight:700;letter-spacing:-.02em}
+.pill{font-size:11px;color:var(--dim);border:1px solid var(--border);border-radius:8px;padding:3px 8px;white-space:nowrap}
+.btn{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 16px;font-weight:600;font-size:15px;display:inline-flex;align-items:center;gap:8px}
+.btn:active{background:var(--panel2)}
+.btn-accent{background:var(--accent);color:#000;border-color:var(--accent)}
+.btn-danger{color:var(--bad)}
+.btn-block{width:100%;justify-content:center}
+.script-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
+.script-card .meta{flex:1;min-width:0}
+.script-card .meta .name{font-weight:600;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.script-card .meta .sub{font-size:12px;color:var(--dim);margin-top:3px}
+.icon-btn{width:42px;height:42px;border-radius:10px;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.empty{color:var(--dim);text-align:center;padding:40px 10px;font-size:14px;line-height:1.6}
 
-Today, we stand at the threshold of a new era. An era defined not by the obstacles in our path, but by our collective capacity to overcome them. 
+/* ---------- Editor ---------- */
+#edit-name{width:100%;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:16px;font-weight:600;margin-bottom:10px}
+#edit-text{width:100%;height:44dvh;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px;font-size:16px;line-height:1.55;resize:none;-webkit-overflow-scrolling:touch}
+.hint{font-size:12px;color:var(--dim);margin:8px 2px 14px;line-height:1.5}
+.hint b{color:var(--stage-color);font-weight:600}
+.row{display:flex;gap:10px;margin-top:10px}
+.row .btn{flex:1;justify-content:center}
+.saved-dot{font-size:12px;color:var(--good);opacity:0;transition:opacity .3s}
+.saved-dot.show{opacity:1}
 
-For years, we have dreamed of tools that understand us, that adapt to our workflows, and that elevate our ideas. Today, that dream becomes reality.
+/* ---------- Settings sheet ---------- */
+#settings-sheet{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);display:flex;align-items:flex-end}
+#settings-panel{background:#161616;border-top-left-radius:18px;border-top-right-radius:18px;width:100%;max-height:82dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px calc(env(safe-area-inset-bottom) + 20px)}
+.sheet-grab{width:38px;height:4px;border-radius:4px;background:#3a3a3a;margin:0 auto 14px}
+.set-group{background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:4px 14px;margin-bottom:12px}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.set-row:last-child{border-bottom:none}
+.set-row label{font-size:15px;font-weight:500}
+.set-row .val{color:var(--accent);font-size:14px;font-variant-numeric:tabular-nums}
+.set-title{font-size:11px;letter-spacing:.08em;color:var(--dim);text-transform:uppercase;margin:16px 4px 8px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:52%;height:26px;background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:#3a3a3a}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:#fff;margin-top:-11px;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.switch{position:relative;width:52px;height:31px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.switch .knob{position:absolute;inset:0;border-radius:31px;background:#3a3a3a;transition:.18s}
+.switch .knob:before{content:"";position:absolute;width:27px;height:27px;border-radius:50%;background:#fff;top:2px;left:2px;transition:.18s;box-shadow:0 1px 3px rgba(0,0,0,.4)}
+.switch input:checked + .knob{background:var(--accent)}
+.switch input:checked + .knob:before{transform:translateX(21px)}
+.seg{display:flex;background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.seg button{padding:8px 14px;font-size:13px;font-weight:600;color:var(--dim)}
+.seg button.on{background:var(--accent);color:#000}
+.themes{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 10px;-webkit-overflow-scrolling:touch}
+.theme-chip{flex-shrink:0;width:76px;height:88px;border-radius:14px;border:2px solid transparent;padding:10px 8px;text-align:left;font-size:13px;font-weight:700}
+.theme-chip small{display:block;font-size:10px;font-weight:400;margin-top:2px;opacity:.8}
+.theme-chip.on{border-color:var(--accent)}
+input[type=color]{width:42px;height:32px;border:none;border-radius:8px;background:var(--panel);padding:2px}
 
-As you speak, the words flow naturally. There is no rush, no hesitation. The screen guides you perfectly. You are in complete control.
+/* ---------- Prompter ---------- */
+#prompter-view{position:fixed;inset:0;background:var(--script-bg);display:flex;flex-direction:column}
+#scroll-container{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative}
+#scroll-container::-webkit-scrollbar{display:none}
+#script-body{white-space:pre-wrap;word-break:break-word;color:var(--script-color);font-weight:600;
+  padding:45dvh 6vw 70dvh;margin:0 auto;transition:opacity .2s}
+#script-body span{transition:opacity .25s,color .25s}
+#script-body .stage{color:var(--stage-color)}
+/* the mirror wrapper flips the WHOLE reading surface */
+#mirror-wrap{flex:1;display:flex;flex-direction:column;min-height:0}
+#mirror-wrap.flip-x{transform:scaleX(-1)}
+#mirror-wrap.flip-y{transform:scaleY(-1)}
+#mirror-wrap.flip-x.flip-y{transform:scale(-1,-1)}
+#cue-line{position:absolute;left:0;right:0;pointer-events:none;z-index:5;display:flex;align-items:center}
+#cue-line .tri{width:0;height:0;border-top:9px solid transparent;border-bottom:9px solid transparent;border-left:14px solid var(--cue-color);margin-left:4px}
+#cue-line .bar{flex:1;height:2px;background:var(--cue-color);opacity:.45;margin:0 10px}
+#hud-top{position:absolute;top:0;left:0;right:0;z-index:10;display:flex;justify-content:space-between;align-items:flex-start;
+  padding:calc(env(safe-area-inset-top) + 10px) 12px 8px;transition:opacity .25s}
+#hud-bottom{position:absolute;bottom:0;left:0;right:0;z-index:10;display:flex;flex-direction:column;gap:8px;
+  padding:8px 12px calc(env(safe-area-inset-bottom) + 12px);transition:opacity .25s}
+.hud-hidden{opacity:0;pointer-events:none}
+.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(20,20,20,.82);border:1px solid var(--border);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:600;backdrop-filter:blur(6px)}
+.dot{width:8px;height:8px;border-radius:50%;background:#555}
+.dot.live{background:var(--good);animation:pulse 1.2s infinite}
+.dot.err{background:var(--bad)}
+@keyframes pulse{50%{opacity:.35}}
+#transcript{font-size:12px;color:var(--dim);background:rgba(20,20,20,.82);border:1px solid var(--border);border-radius:10px;padding:6px 10px;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;backdrop-filter:blur(6px)}
+#transcript strong{color:var(--good);font-weight:600}
+.ctl-row{display:flex;gap:8px;justify-content:center;align-items:center}
+.ctl{background:rgba(20,20,20,.85);border:1px solid var(--border);border-radius:12px;min-width:52px;height:48px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;backdrop-filter:blur(6px);padding:0 14px}
+.ctl:active{background:var(--panel2)}
+.ctl.primary{background:var(--accent);color:#000;border-color:var(--accent);min-width:78px}
+#countdown-overlay{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;font-size:110px;font-weight:800}
+#toast{position:fixed;top:calc(env(safe-area-inset-top) + 60px);left:50%;transform:translateX(-50%);z-index:80;background:rgba(30,30,30,.95);border:1px solid var(--border);border-radius:12px;padding:10px 16px;font-size:14px;font-weight:600;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}
+.serif{font-family:Georgia,'Times New Roman',serif}
+.mono{font-family:ui-monospace,Menlo,monospace}
+</style>
+</head>
+<body>
 
-Take a deep breath. Speak with conviction. Let your ideas shape the future.</textarea>
-        
-        <!-- Preset selectors -->
-        <div class="mt-3 flex flex-wrap gap-2 items-center">
-          <span class="text-xs text-neutral-500 font-mono">Sample Scripts:</span>
-          <button onclick="loadPreset('speech')" class="text-xs bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 px-2 py-1 rounded transition">Keynote</button>
-          <button onclick="loadPreset('pitch')" class="text-xs bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 px-2 py-1 rounded transition">Product Pitch</button>
-          <button onclick="loadPreset('video')" class="text-xs bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 px-2 py-1 rounded transition">Video Review</button>
-        </div>
-      </div>
+<!-- ================= SCRIPT LIBRARY ================= -->
+<div id="lib-view">
+  <div class="topbar">
+    <h1>Teleprompter</h1>
+    <span class="pill" id="storage-pill">saved on this phone</span>
+  </div>
+  <button class="btn btn-accent btn-block" onclick="newScript()">+ New Script</button>
+  <div style="height:14px"></div>
+  <div id="script-list"></div>
+  <div class="empty hidden" id="lib-empty">No scripts yet.<br>Tap <b>New Script</b>, paste your text, and it saves automatically on this phone.</div>
+</div>
 
-      <!-- Quick Settings Grid -->
-      <div class="space-y-4 mb-8">
-        <h2 class="text-sm font-mono uppercase tracking-wider text-neutral-400 border-b border-neutral-900 pb-1">Settings Configuration</h2>
+<!-- ================= EDITOR ================= -->
+<div id="edit-view" class="hidden">
+  <div class="topbar">
+    <button class="btn" onclick="closeEditor()">&#8249; Scripts</button>
+    <span class="saved-dot" id="saved-dot">Saved &#10003;</span>
+    <button class="btn" onclick="openSettings()">Aa Settings</button>
+  </div>
+  <input id="edit-name" placeholder="Script name" />
+  <textarea id="edit-text" placeholder="Paste or dictate your script here..."></textarea>
+  <p class="hint">Anything in <b>[square brackets]</b> shows in orange as a stage direction. In voice mode you do not read it aloud; the prompter skips past it automatically.<br><br>
+  Voice commands: <b>"go top / restart"</b> = start of script &middot; <b>"go previous"</b> = back 2 sentences &middot; <b>"go next"</b> = ahead 2 sentences &middot; <b>"go current"</b> = start of current sentence &middot; <b>"jump back"</b> / <b>"jump next"</b> = previous / next paragraph. All work while paused. You can also drag the script with your finger; when you start speaking, it picks up from wherever you left it.</p>
+  <div class="row">
+    <button class="btn" onclick="startPrompter('auto')">&#9654; Auto Scroll</button>
+    <button class="btn btn-accent" onclick="startPrompter('voice')">&#127908; Voice Follow</button>
+  </div>
+</div>
 
-        <!-- Prompter Mode -->
-        <div class="bg-neutral-950 border border-neutral-900 p-4 rounded-xl">
-          <span class="text-sm font-medium block mb-2">Prompter Mode</span>
-          <div class="grid grid-cols-2 gap-2">
-            <button id="mode-btn-auto" onclick="setMode('auto')" class="py-3 rounded-xl border text-sm font-space-grotesk font-bold transition bg-emerald-500 border-emerald-500 text-black">Auto Scroll</button>
-            <button id="mode-btn-voice" onclick="setMode('voice')" class="py-3 rounded-xl border text-sm font-space-grotesk font-bold transition bg-neutral-900 border-neutral-800 text-neutral-300">Voice Follow</button>
-          </div>
-          <p id="mode-desc" class="text-xs text-neutral-500 mt-2">Auto Scroll: constant speed, voice commands available. Voice Follow: the mic listens as you read and the script tracks your pace. Runs on your iPhone's built-in speech engine. No account, no API, no cloud billing.</p>
-        </div>
+<!-- ================= SETTINGS SHEET ================= -->
+<div id="settings-sheet" class="hidden" onclick="if(event.target===this)closeSettings()">
+  <div id="settings-panel">
+    <div class="sheet-grab"></div>
 
-        <!-- Scroll Speed -->
-        <div class="bg-neutral-950 border border-neutral-900 p-4 rounded-xl">
-          <div class="flex justify-between items-center mb-2">
-            <span class="text-sm font-medium">Scroll Speed</span>
-            <span id="speed-val" class="font-mono text-xs text-emerald-400">${settings.scrollSpeed}</span>
-          </div>
-          <input 
-            type="range" id="setting-speed" min="1" max="12" step="0.5" value="${settings.scrollSpeed}"
-            class="w-full h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-            oninput="updateValue('speed-val', this.value)"
-          >
-        </div>
-
-        <!-- Font Size -->
-        <div class="bg-neutral-950 border border-neutral-900 p-4 rounded-xl">
-          <div class="flex justify-between items-center mb-2">
-            <span class="text-sm font-medium">Base Font Size</span>
-            <span id="size-val" class="font-mono text-xs text-emerald-400">40px</span>
-          </div>
-          <input 
-            type="range" id="setting-size" min="16" max="96" value="40"
-            class="w-full h-2 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-            oninput="updateValue('size-val', this.value + 'px')"
-          >
-        </div>
-
-        <!-- Layout Controls -->
-        <div class="bg-neutral-950 border border-neutral-900 p-4 rounded-xl space-y-4">
-          <!-- Mirror Switch -->
-          <div class="flex justify-between items-center">
-            <div>
-              <span class="text-sm font-medium block">Mirror Text (Horizontal)</span>
-              <span class="text-xs text-neutral-500">For beamsplitter glass teleprompter rigs</span>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" id="setting-mirror-x" class="sr-only peer" >
-              <div class="w-11 h-6 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-            </label>
-          </div>
-
-          <!-- Wake Lock Info -->
-          <div class="flex justify-between items-center border-t border-neutral-900 pt-3">
-            <div>
-              <span class="text-sm font-medium block">Prevent Sleep (Wake Lock)</span>
-              <span class="text-xs text-neutral-500">Keeps iPhone screen awake during scroll</span>
-            </div>
-            <div id="wakelock-status-badge" class="px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-amber-500/10 text-amber-500 border border-amber-500/20">
-              Auto-Acquiring
-            </div>
-          </div>
-
-          <!-- Voice Control Toggle -->
-          <div class="flex justify-between items-center border-t border-neutral-900 pt-3">
-            <div>
-              <span class="text-sm font-medium block">Microphone Voice Control</span>
-              <span class="text-xs text-neutral-500">Auto Scroll mode only. Commands: "stop", "go", "faster", "slower", "reset". Voice Follow mode always uses the mic.</span>
-            </div>
-            <label class="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" id="setting-voice" class="sr-only peer" checked>
-              <div class="w-11 h-6 bg-neutral-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-            </label>
-          </div>
-        </div>
-
-        <!-- Aesthetic Settings -->
-        <div class="bg-neutral-950 border border-neutral-900 p-4 rounded-xl space-y-3">
-          <div class="flex justify-between items-center">
-            <span class="text-sm font-medium">Font Family</span>
-            <select id="setting-font" class="bg-neutral-900 border border-neutral-800 text-xs rounded p-1 text-neutral-200">
-              <option value="space-grotesk" selected>Space Grotesk (Tech)</option>
-              <option value="sans" >Inter (Modern)</option>
-              <option value="jetbrains-mono" >JetBrains Mono</option>
-              <option value="playfair-display" >Playfair Display</option>
-            </select>
-          </div>
-
-          <div class="flex justify-between items-center">
-            <span class="text-sm font-medium">Text Column Margin</span>
-            <select id="setting-margin" class="bg-neutral-900 border border-neutral-800 text-xs rounded p-1 text-neutral-200">
-              <option value="narrow" >Narrow (Keeps eyes focused in center)</option>
-              <option value="medium" selected>Medium</option>
-              <option value="wide" >Wide Screen</option>
-            </select>
-          </div>
-
-          <div class="flex justify-between items-center">
-            <span class="text-sm font-medium">Text Alignment</span>
-            <select id="setting-align" class="bg-neutral-900 border border-neutral-800 text-xs rounded p-1 text-neutral-200">
-              <option value="left" >Left</option>
-              <option value="center" selected>Center</option>
-              <option value="right" >Right</option>
-            </select>
-          </div>
-
-          <div class="flex justify-between items-center">
-            <span class="text-sm font-medium">Show Screen Eye-Guides</span>
-            <input type="checkbox" id="setting-eyeguide" class="w-4 h-4 rounded text-emerald-500 accent-emerald-500" checked>
-          </div>
-        </div>
-      </div>
-
-      <!-- HUGE START BUTTON -->
-      <button 
-        onclick="startPrompter()" 
-        class="w-full bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] transition-all text-black font-bold font-space-grotesk text-xl py-5 rounded-2xl shadow-lg shadow-emerald-500/20 flex items-center justify-center space-x-2"
-      >
-        <svg class="w-6 h-6 fill-black" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-        <span>LAUNCH PROMPTER</span>
-      </button>
-
-      <!-- Help commands explanation -->
-      <div class="mt-8 text-center text-xs text-neutral-600 font-mono space-y-1">
-        <p>Built for glass rigs & handheld scripts</p>
-        <p>Wake Lock & Speech API supported natively</p>
-      </div>
+    <div class="set-title">Mirror</div>
+    <div class="set-group">
+      <div class="set-row"><label>Vertical Mirror (flip upside down)</label>
+        <label class="switch"><input type="checkbox" id="s-flipy" onchange="applySettings()"><span class="knob"></span></label></div>
+      <div class="set-row"><label>Horizontal Mirror (glass rig)</label>
+        <label class="switch"><input type="checkbox" id="s-flipx" onchange="applySettings()"><span class="knob"></span></label></div>
     </div>
 
-    <!-- PROMPTER SCREEN VIEW (HIDDEN BY DEFAULT) -->
-    <div id="prompter-view" class="hidden fixed inset-0 bg-black z-50 flex flex-col justify-between overflow-hidden select-none safe-pb">
-      
-      <!-- Top Status Overlay (Fades out when scrolling) -->
-      <div id="prompter-top-overlay" class="absolute top-0 inset-x-0 bg-gradient-to-b from-black via-black/80 to-transparent p-4 flex items-center justify-between z-20 pointer-events-auto transition-opacity duration-300 safe-pt">
-        <button 
-          onclick="stopPrompter()" 
-          class="bg-neutral-900/80 active:bg-neutral-800 border border-neutral-800 px-3 py-1.5 rounded-lg text-xs font-mono flex items-center space-x-1"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18"/></svg>
-          <span>Exit Setup</span>
-        </button>
-
-        <!-- Timer / Progress -->
-        <div id="stats-container" class="flex space-x-3 text-xs font-mono text-neutral-400">
-          <span id="elapsed-time">00:00</span>
-          <span class="text-neutral-700">|</span>
-          <span id="scroll-percent">0%</span>
-        </div>
-
-        <!-- Status Microphones -->
-        <div id="mic-status" class="flex items-center space-x-1.5 bg-neutral-900/80 px-2 py-1 rounded-lg border border-neutral-800">
-          <div id="mic-indicator-dot" class="w-2 h-2 rounded-full bg-neutral-600"></div>
-          <span id="mic-text" class="text-[10px] font-mono text-neutral-400">MIC OFF</span>
-        </div>
-      </div>
-
-      <!-- Eye Level Guide Lines -->
-      <div id="eye-level-guide" class="absolute left-0 right-0 top-1/2 -translate-y-1/2 pointer-events-none flex justify-between px-2 z-10 opacity-70">
-        <!-- Left Pointer -->
-        <div class="flex items-center space-x-1">
-          <div class="w-2 h-0.5 bg-red-500"></div>
-          <svg class="w-4 h-4 text-red-500 fill-current" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5v10z"/></svg>
-        </div>
-        <!-- Right Pointer -->
-        <div class="flex items-center space-x-1">
-          <svg class="w-4 h-4 text-red-500 fill-current rotate-180" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5v10z"/></svg>
-          <div class="w-2 h-0.5 bg-red-500"></div>
-        </div>
-      </div>
-
-      <!-- Eye Level Background Highlight (very subtle line) -->
-      <div id="eye-level-bar" class="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-20 bg-emerald-500/[0.02] border-y border-dashed border-emerald-500/10 pointer-events-none z-0"></div>
-
-      <!-- Main Text Scroll Window -->
-      <div 
-        id="scroll-container" 
-        class="flex-1 overflow-y-scroll no-scrollbar px-6 relative cursor-pointer pt-[40vh] pb-[60vh] z-0"
-        onclick="handleScreenTap(event)"
-      >
-        <!-- The text card itself gets transformed for flipping -->
-        <div id="text-canvas" class="mx-auto select-none transition-transform duration-100 ease-linear">
-          <div id="prompter-text-body" class="leading-relaxed whitespace-pre-wrap"></div>
-        </div>
-      </div>
-
-      <!-- Action Feedback Toast (e.g. "Heard: PAUSE") -->
-      <div id="action-toast" class="absolute top-1/4 left-1/2 -translate-x-1/2 bg-emerald-500 text-black font-space-grotesk font-bold text-sm px-4 py-2 rounded-full shadow-lg opacity-0 transition-all duration-300 z-30 pointer-events-none">
-        Command Received
-      </div>
-
-      <!-- Bottom Control Overlay (Fluid, Finger-Friendly) -->
-      <div id="prompter-bottom-overlay" class="bg-black/95 border-t border-neutral-900 p-4 safe-pb relative z-20 pointer-events-auto">
-        <!-- Floating indicator when paused -->
-        <div id="paused-badge" class="absolute -top-10 left-1/2 -translate-x-1/2 bg-amber-500 text-black font-space-grotesk font-bold text-xs py-1 px-3 rounded-full flex items-center space-x-1.5 shadow-md">
-          <div class="w-1.5 h-1.5 bg-black rounded-full animate-pulse"></div>
-          <span>TAP ANYWHERE TO RESUME</span>
-        </div>
-
-        <div class="space-y-4">
-          <!-- Live Speed Slider (Finger Friendly) -->
-          <div id="speed-slider-block">
-            <div class="flex justify-between items-center mb-1 text-[11px] font-mono text-neutral-400">
-              <span class="flex items-center space-x-1">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                <span>SCROLL SPEED</span>
-              </span>
-              <span id="live-speed-display" class="font-bold text-emerald-400">${settings.scrollSpeed}</span>
-            </div>
-            <div class="flex items-center space-x-3">
-              <button onclick="adjustLiveSpeed(-0.5)" class="w-10 h-10 rounded-full bg-neutral-900 border border-neutral-800 active:bg-neutral-800 flex items-center justify-center font-bold text-lg">-</button>
-              <input 
-                type="range" id="prompter-speed-slider" min="1" max="12" step="0.5" value="${settings.scrollSpeed}"
-                class="flex-1 h-3 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-                oninput="setPrompterSpeed(this.value)"
-              >
-              <button onclick="adjustLiveSpeed(0.5)" class="w-10 h-10 rounded-full bg-neutral-900 border border-neutral-800 active:bg-neutral-800 flex items-center justify-center font-bold text-lg">+</button>
-            </div>
-          </div>
-
-          <!-- Font Size Adjust & Restart Buttons row -->
-          <div class="flex items-center justify-between">
-            <!-- Text controls -->
-            <div class="flex items-center space-x-2">
-              <button onclick="adjustLiveFontSize(-4)" class="bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 px-3 py-2 rounded-xl text-xs font-mono flex items-center space-x-1">
-                <span>A-</span>
-              </button>
-              <span id="live-font-display" class="text-xs font-mono text-neutral-400">48px</span>
-              <button onclick="adjustLiveFontSize(4)" class="bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 px-3 py-2 rounded-xl text-xs font-mono flex items-center space-x-1">
-                <span>A+</span>
-              </button>
-            </div>
-
-            <!-- Main control actions -->
-            <div class="flex space-x-2">
-              <button onclick="restartPrompterText()" class="bg-neutral-900 active:bg-neutral-800 border border-neutral-800 p-2.5 rounded-xl text-xs font-mono flex items-center justify-center" title="Rewind to Top">
-                <svg class="w-5 h-5 text-neutral-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 15l-6 6m0 0l-6-6m6 6V9a6 6 0 0112 0v3"/></svg>
-              </button>
-              <button id="live-play-btn" onclick="togglePrompterPlayState()" class="bg-emerald-500 active:scale-95 text-black px-6 py-2 rounded-xl text-sm font-bold font-space-grotesk flex items-center space-x-1">
-                <svg id="play-btn-icon" class="w-4 h-4 fill-black" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>
-                <span id="play-btn-text">PAUSE</span>
-              </button>
-            </div>
-          </div>
-          
-          <!-- Speech Transcript Bubble (Fades out when quiet) -->
-          <div id="transcript-container" class="hidden text-center text-[10px] font-mono text-neutral-500 bg-neutral-950 p-2 rounded-lg border border-neutral-900/60 transition-opacity duration-300 max-h-12 overflow-hidden">
-            <span>Listening... Try: <strong>"stop"</strong>, <strong>"go"</strong>, <strong>"faster"</strong>, <strong>"slower"</strong></span>
-          </div>
-        </div>
-      </div>
+    <div class="set-title">Text</div>
+    <div class="set-group">
+      <div class="set-row"><label>Size <span class="val" id="v-font">52</span></label>
+        <input type="range" id="s-font" min="22" max="110" value="52" oninput="applySettings()"></div>
+      <div class="set-row"><label>Line height <span class="val" id="v-line">1.4</span></label>
+        <input type="range" id="s-line" min="10" max="22" value="14" oninput="applySettings()"></div>
+      <div class="set-row"><label>Width <span class="val" id="v-width">100%</span></label>
+        <input type="range" id="s-width" min="50" max="100" value="100" oninput="applySettings()"></div>
+      <div class="set-row"><label>Font</label>
+        <div class="seg" id="s-fontfam">
+          <button data-v="sans" class="on" onclick="segPick(this)">Sans</button>
+          <button data-v="serif" onclick="segPick(this)">Serif</button>
+          <button data-v="mono" onclick="segPick(this)">Mono</button>
+        </div></div>
     </div>
 
-    <!-- MAIN JAVASCRIPT APP LOGIC -->
-    <script>
-      // Global App State
-      let text = ``;
-      let speed = 4;
-      let fontSize = 48;
-      let isMirrorHorizontal = false;
-      let isPlaying = false;
-      let marginWidth = 'medium';
-      let fontFamily = 'space-grotesk';
-      let alignment = 'center';
-      let showEyeGuide = true;
-      let showTimer = true;
-      let voiceControlEnabled = true;
+    <div class="set-title">Cue indicator</div>
+    <div class="set-group">
+      <div class="set-row"><label>Show cue line</label>
+        <label class="switch"><input type="checkbox" id="s-cue" checked onchange="applySettings()"><span class="knob"></span></label></div>
+      <div class="set-row"><label>Position <span class="val" id="v-cuepos">35%</span></label>
+        <input type="range" id="s-cuepos" min="15" max="70" value="35" oninput="applySettings()"></div>
+      <div class="set-row"><label>Cue color</label>
+        <input type="color" id="s-cuecolor" value="#ff9f0a" oninput="applySettings()"></div>
+    </div>
 
-      // Prompter mode: 'auto' (constant scroll) or 'voice' (follows your reading)
-      let prompterMode = 'auto';
-      let scriptWordEls = [];   // span elements for each word, in order
-      let matchIndex = 0;       // next script word we expect to hear
-      let targetScrollY = null; // where the follow engine is easing toward
-      let lastCurrentEl = null; // last highlighted "current" word
+    <div class="set-title">Colors &amp; themes</div>
+    <div class="themes" id="theme-row"></div>
+    <div class="set-group">
+      <div class="set-row"><label>Text color</label><input type="color" id="s-textcolor" value="#ffffff" oninput="applySettings()"></div>
+      <div class="set-row"><label>Background</label><input type="color" id="s-bgcolor" value="#000000" oninput="applySettings()"></div>
+      <div class="set-row"><label>Stage direction</label><input type="color" id="s-stagecolor" value="#ff9f0a" oninput="applySettings()"></div>
+    </div>
 
-      function setMode(mode) {
-        prompterMode = mode;
-        const autoBtn = document.getElementById('mode-btn-auto');
-        const voiceBtn = document.getElementById('mode-btn-voice');
-        const activeCls = 'py-3 rounded-xl border text-sm font-space-grotesk font-bold transition bg-emerald-500 border-emerald-500 text-black';
-        const idleCls = 'py-3 rounded-xl border text-sm font-space-grotesk font-bold transition bg-neutral-900 border-neutral-800 text-neutral-300';
-        autoBtn.className = mode === 'auto' ? activeCls : idleCls;
-        voiceBtn.className = mode === 'voice' ? activeCls : idleCls;
+    <div class="set-title">Behavior</div>
+    <div class="set-group">
+      <div class="set-row"><label>Countdown before start</label>
+        <div class="seg" id="s-count">
+          <button data-v="0" onclick="segPick(this)">Off</button>
+          <button data-v="3" class="on" onclick="segPick(this)">3s</button>
+          <button data-v="5" onclick="segPick(this)">5s</button>
+        </div></div>
+      <div class="set-row"><label>Tap screen to pause / resume</label>
+        <label class="switch"><input type="checkbox" id="s-tap" checked onchange="applySettings()"><span class="knob"></span></label></div>
+      <div class="set-row"><label>Hide controls while scrolling</label>
+        <label class="switch"><input type="checkbox" id="s-hidehud" onchange="applySettings()"><span class="knob"></span></label></div>
+      <div class="set-row"><label>Auto-scroll speed <span class="val" id="v-speed">3</span></label>
+        <input type="range" id="s-speed" min="1" max="10" value="3" oninput="applySettings()"></div>
+    </div>
+
+    <button class="btn btn-block" onclick="closeSettings()">Done</button>
+  </div>
+</div>
+
+<!-- ================= PROMPTER ================= -->
+<div id="prompter-view" class="hidden">
+  <div id="mirror-wrap">
+    <div id="scroll-container">
+      <div id="cue-line"><div class="tri"></div><div class="bar"></div></div>
+      <div id="script-body"></div>
+    </div>
+  </div>
+
+  <div id="hud-top">
+    <button class="ctl" onclick="exitPrompter()" style="min-width:auto">&#10005;</button>
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;max-width:70%">
+      <span class="badge"><span class="dot" id="mic-dot"></span><span id="mic-text">MIC OFF</span></span>
+      <span class="badge"><span id="elapsed-time">00:00</span>&nbsp;&middot;&nbsp;<span id="scroll-percent">0%</span></span>
+      <div id="transcript" class="hidden"></div>
+    </div>
+  </div>
+
+  <div id="hud-bottom">
+    <div class="ctl-row">
+      <button class="ctl" onclick="restartPrompterText()">&#8676;</button>
+      <button class="ctl" onclick="nudgeFont(-4)">A-</button>
+      <button class="ctl primary" id="play-btn" onclick="togglePlay()">&#9654;</button>
+      <button class="ctl" onclick="nudgeFont(4)">A+</button>
+      <button class="ctl" id="speed-down" onclick="nudgeSpeed(-1)">&#8722;</button>
+      <button class="ctl" id="speed-up" onclick="nudgeSpeed(1)">&#43;</button>
+    </div>
+  </div>
+</div>
+
+<div id="countdown-overlay" class="hidden"></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* =====================================================================
+   STORAGE — script library, all local to this phone (localStorage)
+===================================================================== */
+const LS_SCRIPTS = 'tp_scripts_v1';
+const LS_SETTINGS = 'tp_settings_v1';
+const LS_ACTIVE = 'tp_active_v1';
+
+function loadScripts(){
+  try{ const a = JSON.parse(localStorage.getItem(LS_SCRIPTS)); return Array.isArray(a) ? a : []; }
+  catch(e){ return []; }
+}
+function saveScripts(){
+  try{ localStorage.setItem(LS_SCRIPTS, JSON.stringify(scripts)); }
+  catch(e){ toast('Storage full — could not save'); }
+}
+let scripts = loadScripts();
+let activeId = localStorage.getItem(LS_ACTIVE) || null;
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function getActive(){ return scripts.find(s => s.id === activeId) || null; }
+function wordCount(t){ return (t.trim().match(/\S+/g) || []).length; }
+function fmtDate(ts){ const d = new Date(ts); return d.toLocaleDateString(undefined,{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
+
+/* ---------- Library UI ---------- */
+function renderLibrary(){
+  const list = document.getElementById('script-list');
+  list.innerHTML = '';
+  document.getElementById('lib-empty').classList.toggle('hidden', scripts.length > 0);
+  scripts.slice().sort((a,b) => b.updated - a.updated).forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'script-card';
+    const meta = document.createElement('button');
+    meta.className = 'meta';
+    meta.style.textAlign = 'left';
+    meta.innerHTML = '<div class="name"></div><div class="sub"></div>';
+    meta.querySelector('.name').textContent = s.name || 'Untitled';
+    meta.querySelector('.sub').textContent = wordCount(s.text) + ' words · ' + fmtDate(s.updated);
+    meta.onclick = () => openEditor(s.id);
+    const dup = document.createElement('button');
+    dup.className = 'icon-btn'; dup.innerHTML = '&#10697;'; dup.title = 'Duplicate';
+    dup.onclick = () => { const c = {id:uid(), name:(s.name||'Untitled')+' copy', text:s.text, updated:Date.now()}; scripts.push(c); saveScripts(); renderLibrary(); };
+    const del = document.createElement('button');
+    del.className = 'icon-btn btn-danger'; del.innerHTML = '&#128465;'; del.title = 'Delete';
+    del.onclick = () => {
+      if(confirm('Delete "' + (s.name||'Untitled') + '"? This cannot be undone.')){
+        scripts = scripts.filter(x => x.id !== s.id); saveScripts(); renderLibrary();
       }
+    };
+    card.append(meta, dup, del);
+    list.appendChild(card);
+  });
+}
 
-      // Wake lock reference
-      let wakeLock = null;
+function newScript(){
+  const s = { id: uid(), name: '', text: '', updated: Date.now() };
+  scripts.push(s); saveScripts();
+  openEditor(s.id);
+}
 
-      // Speech Recognition reference
-      let recognition = null;
-      let speechRestartInterval = null;
-      let micStream = null;          // held open so the browser doesn't re-prompt
-      let recogFatal = false;        // permission denied / service refused
-      let restartTimestamps = [];    // detect restart loops and bail out
+/* ---------- Editor with autosave ---------- */
+let saveTimer = null;
+function openEditor(id){
+  activeId = id;
+  localStorage.setItem(LS_ACTIVE, id);
+  const s = getActive(); if(!s) return;
+  document.getElementById('edit-name').value = s.name;
+  document.getElementById('edit-text').value = s.text;
+  document.getElementById('lib-view').classList.add('hidden');
+  document.getElementById('edit-view').classList.remove('hidden');
+}
+function closeEditor(){
+  flushSave();
+  document.getElementById('edit-view').classList.add('hidden');
+  document.getElementById('lib-view').classList.remove('hidden');
+  renderLibrary();
+}
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSave, 500);
+}
+function flushSave(){
+  clearTimeout(saveTimer);
+  const s = getActive(); if(!s) return;
+  const name = document.getElementById('edit-name').value;
+  const text = document.getElementById('edit-text').value;
+  if(s.name === name && s.text === text) return;
+  s.name = name; s.text = text; s.updated = Date.now();
+  saveScripts();
+  const dot = document.getElementById('saved-dot');
+  dot.classList.add('show');
+  setTimeout(() => dot.classList.remove('show'), 1200);
+}
+document.getElementById('edit-name').addEventListener('input', scheduleSave);
+document.getElementById('edit-text').addEventListener('input', scheduleSave);
+window.addEventListener('pagehide', flushSave);
+document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') flushSave(); });
 
-      // Scroll physics engine variables
-      let lastFrameTime = 0;
-      let currentScrollY = 0;
-      let prompterAnimationId = null;
-      let prompterStartTime = 0;
-      let elapsedSeconds = 0;
-      let elapsedInterval = null;
+/* =====================================================================
+   SETTINGS
+===================================================================== */
+const DEFAULTS = { flipx:false, flipy:false, font:52, line:14, width:100, fontfam:'sans',
+  cue:true, cuepos:35, cuecolor:'#ff9f0a', textcolor:'#ffffff', bgcolor:'#000000',
+  stagecolor:'#ff9f0a', count:'3', tap:true, hidehud:false, speed:3 };
 
-      // Load specific script presets
-      const presets = {
-        speech: `Good morning, everyone. \n\nToday, we stand at the threshold of a new era. An era defined not by the obstacles in our path, but by our collective capacity to overcome them. \n\nFor years, we have dreamed of tools that understand us, that adapt to our workflows, and that elevate our ideas. Today, that dream becomes reality. \n\nAs you speak, the words flow naturally. There is no rush, no hesitation. The screen guides you perfectly. You are in complete control. \n\nTake a deep breath. Speak with conviction. Let your ideas shape the future.`,
-        pitch: `Imagine a world where your technology works exactly the way you think. \n\nOur new platform solves the biggest bottleneck in creative development: friction. We have reduced setup times to zero, automated tedious configurations, and introduced real-time interactive intelligence. \n\nWe are launching today in beta. Early users are reporting a three-fold increase in iteration speed and, more importantly, a renewed joy in creating. \n\nThis is more than an update. It is a fundamental shift in how we build. Thank you.`,
-        video: `What is up, guys! Today, we are taking a look at the ultimate smartphone setup for mobile creators. \n\nWe all know that capturing crisp audio and staying focused on the lens are two of the hardest parts of self-shooting. That is where a smart teleprompter setup comes in. \n\nBy placing this right in front of your lens, you can look directly into the camera while reading your notes, making your videos look engaging and professional. \n\nWith built-in voice commands, you do not even need a remote. Let's dive in and see how it works!`
-      };
+const THEMES = [
+  {name:'With Rig', sub:'stage', bg:'#000000', text:'#ffffff', stage:'#ff9f0a'},
+  {name:'Night',    sub:'stage', bg:'#16214a', text:'#e8ecf5', stage:'#ffc04d'},
+  {name:'Reader',   sub:'stage', bg:'#efeccf', text:'#5a3a2e', stage:'#b0651f'},
+  {name:'Calm',     sub:'stage', bg:'#f2f2f7', text:'#3737c8', stage:'#2196b8'},
+  {name:'Mystery',  sub:'stage', bg:'#3d1a55', text:'#7fe7e0', stage:'#d98fff'}
+];
 
-      function loadPreset(key) {
-        if (presets[key]) {
-          document.getElementById('script-input').value = presets[key];
-        }
+function loadSettings(){
+  let s = {};
+  try{ s = JSON.parse(localStorage.getItem(LS_SETTINGS)) || {}; }catch(e){}
+  return Object.assign({}, DEFAULTS, s);
+}
+let settings = loadSettings();
+
+function settingsToUI(){
+  document.getElementById('s-flipx').checked = settings.flipx;
+  document.getElementById('s-flipy').checked = settings.flipy;
+  document.getElementById('s-font').value = settings.font;
+  document.getElementById('s-line').value = settings.line;
+  document.getElementById('s-width').value = settings.width;
+  document.getElementById('s-cue').checked = settings.cue;
+  document.getElementById('s-cuepos').value = settings.cuepos;
+  document.getElementById('s-cuecolor').value = settings.cuecolor;
+  document.getElementById('s-textcolor').value = settings.textcolor;
+  document.getElementById('s-bgcolor').value = settings.bgcolor;
+  document.getElementById('s-stagecolor').value = settings.stagecolor;
+  document.getElementById('s-tap').checked = settings.tap;
+  document.getElementById('s-hidehud').checked = settings.hidehud;
+  document.getElementById('s-speed').value = settings.speed;
+  segSet('s-fontfam', settings.fontfam);
+  segSet('s-count', settings.count);
+}
+function segSet(id, val){
+  document.querySelectorAll('#' + id + ' button').forEach(b => b.classList.toggle('on', b.dataset.v == val));
+}
+function segPick(btn){
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  applySettings();
+}
+function segVal(id){
+  const on = document.querySelector('#' + id + ' button.on');
+  return on ? on.dataset.v : null;
+}
+
+function applySettings(){
+  settings.flipx = document.getElementById('s-flipx').checked;
+  settings.flipy = document.getElementById('s-flipy').checked;
+  settings.font = +document.getElementById('s-font').value;
+  settings.line = +document.getElementById('s-line').value;
+  settings.width = +document.getElementById('s-width').value;
+  settings.fontfam = segVal('s-fontfam') || 'sans';
+  settings.cue = document.getElementById('s-cue').checked;
+  settings.cuepos = +document.getElementById('s-cuepos').value;
+  settings.cuecolor = document.getElementById('s-cuecolor').value;
+  settings.textcolor = document.getElementById('s-textcolor').value;
+  settings.bgcolor = document.getElementById('s-bgcolor').value;
+  settings.stagecolor = document.getElementById('s-stagecolor').value;
+  settings.count = segVal('s-count') || '3';
+  settings.tap = document.getElementById('s-tap').checked;
+  settings.hidehud = document.getElementById('s-hidehud').checked;
+  settings.speed = +document.getElementById('s-speed').value;
+  try{ localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }catch(e){}
+
+  document.getElementById('v-font').textContent = settings.font;
+  document.getElementById('v-line').textContent = (settings.line/10).toFixed(1);
+  document.getElementById('v-width').textContent = settings.width + '%';
+  document.getElementById('v-cuepos').textContent = settings.cuepos + '%';
+  document.getElementById('v-speed').textContent = settings.speed;
+  applyPrompterStyle();
+}
+
+function applyPrompterStyle(){
+  const root = document.documentElement.style;
+  root.setProperty('--script-color', settings.textcolor);
+  root.setProperty('--script-bg', settings.bgcolor);
+  root.setProperty('--stage-color', settings.stagecolor);
+  root.setProperty('--cue-color', settings.cuecolor);
+
+  const body = document.getElementById('script-body');
+  body.style.fontSize = settings.font + 'px';
+  body.style.lineHeight = (settings.line/10).toFixed(2);
+  body.style.maxWidth = settings.width + '%';
+  body.classList.toggle('serif', settings.fontfam === 'serif');
+  body.classList.toggle('mono', settings.fontfam === 'mono');
+
+  const wrap = document.getElementById('mirror-wrap');
+  wrap.classList.toggle('flip-x', settings.flipx);
+  wrap.classList.toggle('flip-y', settings.flipy);
+  const t = (settings.flipx ? 'scaleX(-1) ' : '') + (settings.flipy ? 'scaleY(-1)' : '');
+  wrap.style.transform = t.trim() || 'none';
+  wrap.style.webkitTransform = wrap.style.transform;
+
+  const cue = document.getElementById('cue-line');
+  cue.style.display = settings.cue ? 'flex' : 'none';
+  positionCueLine();
+}
+function positionCueLine(){
+  const container = document.getElementById('scroll-container');
+  const cue = document.getElementById('cue-line');
+  // cue line rides with scroll: keep it fixed relative to viewport by offsetting scrollTop
+  cue.style.top = (container.scrollTop + container.clientHeight * settings.cuepos / 100) + 'px';
+}
+
+function renderThemes(){
+  const row = document.getElementById('theme-row');
+  row.innerHTML = '';
+  THEMES.forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'theme-chip';
+    b.style.background = t.bg; b.style.color = t.text;
+    b.innerHTML = 'Aa<br>' + t.name + '<small style="color:' + t.stage + '">[stage]</small>';
+    b.onclick = () => {
+      document.getElementById('s-textcolor').value = t.text;
+      document.getElementById('s-bgcolor').value = t.bg;
+      document.getElementById('s-stagecolor').value = t.stage;
+      row.querySelectorAll('.theme-chip').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      applySettings();
+    };
+    row.appendChild(b);
+  });
+}
+
+function openSettings(){ document.getElementById('settings-sheet').classList.remove('hidden'); }
+function closeSettings(){ document.getElementById('settings-sheet').classList.add('hidden'); }
+
+/* =====================================================================
+   PROMPTER CORE
+===================================================================== */
+let prompterMode = 'auto';        // 'auto' | 'voice'
+let isPlaying = false;
+let prompterAnimationId = null;
+let currentScrollY = 0;
+let targetScrollY = null;
+let lastFrameTime = 0;
+let elapsedInterval = null;
+let elapsedSeconds = 0;
+let wakeLock = null;
+
+let scriptWordEls = [];
+let matchIndex = 0;
+let lastCurrentEl = null;
+let sentenceStarts = [0];   // word indices where sentences begin (for go next/previous/current)
+let paragraphStarts = [0];  // word indices where paragraphs (lines) begin (for jump next/back)
+let recognition = null;
+let micStream = null;
+let recogFatal = false;
+let restartTimestamps = [];
+let prompterOpen = false;
+let missBuffer = [];
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+/* ---------- Build script DOM: word spans + [bracket] stage directions ---------- */
+function normWord(w){ return w.toLowerCase().replace(/[^a-z0-9']/g,''); }
+
+function buildScript(rawText){
+  const body = document.getElementById('script-body');
+  body.innerHTML = '';
+  scriptWordEls = [];
+  matchIndex = 0;
+  targetScrollY = null;
+  lastCurrentEl = null;
+  sentenceStarts = [0];
+  paragraphStarts = [0];
+  let newSentence = false;
+  let newParagraph = false;
+
+  const frag = document.createDocumentFragment();
+  // split into [bracketed] chunks vs normal text
+  rawText.split(/(\[[^\]\n]*\])/).forEach(chunk => {
+    if(!chunk) return;
+    if(chunk[0] === '[' && chunk[chunk.length-1] === ']'){
+      const span = document.createElement('span');
+      span.className = 'stage';
+      span.textContent = chunk;
+      frag.appendChild(span);   // NOT added to word list — voice matching skips it
+      return;
+    }
+    chunk.split(/(\s+)/).forEach(tok => {
+      if(tok === '') return;
+      if(/^\s+$/.test(tok)){
+        if(tok.indexOf('\n') !== -1){ newSentence = true; newParagraph = true; }
+        frag.appendChild(document.createTextNode(tok));
+        return;
       }
-
-      function updateValue(id, value) {
-        document.getElementById(id).textContent = value;
+      const span = document.createElement('span');
+      span.textContent = tok;
+      const norm = normWord(tok);
+      if(norm){
+        span.dataset.norm = norm;
+        if(newSentence && scriptWordEls.length > 0) sentenceStarts.push(scriptWordEls.length);
+        if(newParagraph && scriptWordEls.length > 0) paragraphStarts.push(scriptWordEls.length);
+        newSentence = /[.!?\u2026]["')\]]*$/.test(tok);
+        newParagraph = false;
+        scriptWordEls.push(span);
       }
+      frag.appendChild(span);
+    });
+  });
+  body.appendChild(frag);
+}
 
-      // Acquire screen wake lock
-      async function requestWakeLock() {
-        if ('wakeLock' in navigator) {
-          try {
-            wakeLock = await navigator.wakeLock.request('screen');
-            updateWakeLockBadge(true);
-            wakeLock.addEventListener('release', () => {
-              updateWakeLockBadge(false);
-            });
-          } catch (err) {
-            console.warn('Wake Lock request failed:', err);
-            updateWakeLockBadge(false);
-          }
-        } else {
-          updateWakeLockBadge(false);
-        }
+/* ---------- Voice matching (ported, proven in Safari) ---------- */
+function wordsClose(a, b){
+  if(a === b) return true;
+  if(a.length >= 4 && b.length >= 4){
+    const stem = Math.min(a.length, b.length, 5);
+    return a.slice(0, stem) === b.slice(0, stem);
+  }
+  return false;
+}
+function matchSpokenWord(spoken){
+  const LOOKAHEAD = 14;
+  const end = Math.min(scriptWordEls.length, matchIndex + LOOKAHEAD);
+  for(let i = matchIndex; i < end; i++){
+    if(wordsClose(scriptWordEls[i].dataset.norm, spoken)){
+      for(let j = matchIndex; j <= i; j++){
+        scriptWordEls[j].style.opacity = '0.35';
+        scriptWordEls[j].style.color = '';
       }
-
-      function releaseWakeLock() {
-        if (wakeLock !== null) {
-          wakeLock.release();
-          wakeLock = null;
+      if(lastCurrentEl) lastCurrentEl.style.color = '';
+      const cur = scriptWordEls[i];
+      cur.style.opacity = '1';
+      cur.style.color = 'var(--good)';
+      lastCurrentEl = cur;
+      matchIndex = i + 1;
+      missBuffer.length = 0;
+      setFollowTarget(cur);
+      return true;
+    }
+  }
+  // ----- backward rescue -----
+  // Forward match failed. If the LAST TWO unmatched spoken words appear
+  // in sequence within the previous ~45 script words, the reader has
+  // backed up to re-read a sentence — rewind there. Two-word requirement
+  // stops common words ("the", "and") from yanking position backward.
+  missBuffer.push(spoken);
+  if(missBuffer.length > 2) missBuffer.shift();
+  if(missBuffer.length === 2){
+    const lo = Math.max(0, matchIndex - 45);
+    for(let i = matchIndex - 2; i >= lo; i--){
+      if(wordsClose(scriptWordEls[i].dataset.norm, missBuffer[0]) &&
+         wordsClose(scriptWordEls[i+1].dataset.norm, missBuffer[1])){
+        for(let j = i; j < scriptWordEls.length; j++){
+          scriptWordEls[j].style.opacity = '';
+          scriptWordEls[j].style.color = '';
         }
+        if(lastCurrentEl) lastCurrentEl.style.color = '';
+        const cur = scriptWordEls[i+1];
+        cur.style.opacity = '1';
+        cur.style.color = 'var(--good)';
+        lastCurrentEl = cur;
+        matchIndex = i + 2;
+        missBuffer.length = 0;
+        setFollowTarget(cur);
+        return true;
       }
+    }
+  }
+  return false;
+}
+function setFollowTarget(el){
+  const container = document.getElementById('scroll-container');
+  const anchor = settings.cue ? settings.cuepos/100 : 0.38;
+  targetScrollY = Math.max(0, el.offsetTop - container.clientHeight * anchor);
+}
 
-      function updateWakeLockBadge(active) {
-        const badge = document.getElementById('wakelock-status-badge');
-        if (active) {
-          badge.textContent = 'Active (Preventing Sleep)';
-          badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20';
-        } else {
-          badge.textContent = 'Unsupported/Inactive';
-          badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono uppercase bg-neutral-800 text-neutral-500 border border-neutral-700';
+/* ---------- Sentence navigation & voice commands ---------- */
+function currentSentenceIdx(){
+  // sentence containing the last matched word (or 0 if nothing matched yet)
+  const pos = Math.max(0, matchIndex - 1);
+  let si = 0;
+  for(let i = 0; i < sentenceStarts.length; i++){
+    if(sentenceStarts[i] <= pos) si = i; else break;
+  }
+  return si;
+}
+function jumpToWord(idx){
+  if(scriptWordEls.length === 0) return;
+  idx = Math.max(0, Math.min(idx, scriptWordEls.length - 1));
+  scriptWordEls.forEach((el, i) => {
+    el.style.opacity = i < idx ? '0.35' : '';
+    el.style.color = '';
+  });
+  lastCurrentEl = null;
+  matchIndex = idx;
+  setFollowTarget(scriptWordEls[idx]);
+  // if paused (or between matches), move the view immediately
+  const container = document.getElementById('scroll-container');
+  container.scrollTop = targetScrollY;
+  currentScrollY = targetScrollY;
+  positionCueLine();
+  updatePct(container);
+}
+const CMD_ALIASES = { top:'top', restart:'top', beginning:'top',
+  next:'next', previous:'prev', back:'prev', current:'current' };
+const JUMP_ALIASES = { back:'jback', backwards:'jback', previous:'jback', prev:'jback',
+  next:'jnext', forward:'jnext', forwards:'jnext', ahead:'jnext' };
+let lastCmdTimes = {};
+function currentParagraphIdx(){
+  const pos = Math.max(0, matchIndex - 1);
+  let pi = 0;
+  for(let i = 0; i < paragraphStarts.length; i++){
+    if(paragraphStarts[i] <= pos) pi = i; else break;
+  }
+  return pi;
+}
+function runVoiceCommand(cmd){
+  const now = Date.now();
+  if(now - (lastCmdTimes[cmd] || 0) < 1500) return;
+  lastCmdTimes[cmd] = now;
+  const si = currentSentenceIdx();
+  if(cmd === 'top'){
+    jumpToWord(0);
+    toast('Go top');
+  } else if(cmd === 'prev'){
+    jumpToWord(sentenceStarts[Math.max(0, si - 2)]);
+    toast('Back 2 sentences');
+  } else if(cmd === 'next'){
+    jumpToWord(sentenceStarts[Math.min(sentenceStarts.length - 1, si + 2)]);
+    toast('Ahead 2 sentences');
+  } else if(cmd === 'current'){
+    jumpToWord(sentenceStarts[si]);
+    toast('Start of sentence');
+  } else if(cmd === 'jback' || cmd === 'jnext'){
+    const dir = cmd === 'jnext' ? 1 : -1;
+    if(paragraphStarts.length > 1){
+      const pi = currentParagraphIdx();
+      jumpToWord(paragraphStarts[Math.max(0, Math.min(paragraphStarts.length - 1, pi + dir))]);
+      toast(dir > 0 ? 'Next paragraph' : 'Previous paragraph');
+    } else {
+      // script is one big block: fall back to 3 sentences
+      jumpToWord(sentenceStarts[Math.max(0, Math.min(sentenceStarts.length - 1, si + dir * 3))]);
+      toast(dir > 0 ? 'Ahead 3 sentences' : 'Back 3 sentences');
+    }
+  }
+}
+
+/* ---------- Scroll loops ---------- */
+function startFollowLoop(){
+  cancelAnimationFrame(prompterAnimationId);
+  const container = document.getElementById('scroll-container');
+  currentScrollY = container.scrollTop;
+  function loop(){
+    if(!isPlaying || prompterMode !== 'voice') return;
+    if(targetScrollY !== null){
+      const diff = targetScrollY - currentScrollY;
+      if(Math.abs(diff) < 0.5) currentScrollY = targetScrollY;
+      else currentScrollY += diff * 0.12;
+      container.scrollTop = currentScrollY;
+    } else {
+      currentScrollY = container.scrollTop;
+    }
+    positionCueLine();
+    updatePct(container);
+    prompterAnimationId = requestAnimationFrame(loop);
+  }
+  prompterAnimationId = requestAnimationFrame(loop);
+}
+function speedToPps(s){
+  // 1-10 slider mapped so 3-7 moves in half-steps of the old scale:
+  // 3=old 3, 4=old 3.5, 5=old 4, 6=old 4.5, 7=old 5, then ramps to old 10
+  let v;
+  if(s <= 3) v = s;
+  else if(s <= 7) v = 3 + (s - 3) * 0.5;
+  else v = 5 + (s - 7) * (5 / 3);
+  return 12 + (v - 1) * 18;
+}
+function startAutoScroll(){
+  cancelAnimationFrame(prompterAnimationId);
+  const container = document.getElementById('scroll-container');
+  currentScrollY = container.scrollTop;
+  lastFrameTime = performance.now();
+  function loop(now){
+    if(!isPlaying || prompterMode !== 'auto') return;
+    const dt = Math.min(64, now - lastFrameTime);
+    lastFrameTime = now;
+    const pps = speedToPps(settings.speed);
+    currentScrollY += pps * dt / 1000;
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    if(currentScrollY >= maxScroll){
+      currentScrollY = maxScroll;
+      container.scrollTop = currentScrollY;
+      isPlaying = false;
+      updatePlayUI();
+      toast('End of script');
+      return;
+    }
+    container.scrollTop = currentScrollY;
+    positionCueLine();
+    updatePct(container);
+    prompterAnimationId = requestAnimationFrame(loop);
+  }
+  prompterAnimationId = requestAnimationFrame(loop);
+}
+function updatePct(container){
+  const maxScroll = Math.max(1, container.scrollHeight - container.clientHeight);
+  document.getElementById('scroll-percent').textContent =
+    Math.min(100, Math.round(container.scrollTop / maxScroll * 100)) + '%';
+}
+
+/* ---------- Start / stop ---------- */
+async function startPrompter(mode){
+  flushSave();
+  const s = getActive();
+  if(!s || !s.text.trim()){ toast('Script is empty'); return; }
+  prompterMode = mode;
+  prompterOpen = true;
+
+  buildScript(s.text);
+  applyPrompterStyle();
+
+  document.getElementById('edit-view').classList.add('hidden');
+  document.getElementById('prompter-view').classList.remove('hidden');
+  document.getElementById('scroll-container').scrollTop = 0;
+  currentScrollY = 0; targetScrollY = null;
+  positionCueLine();
+  updateMicUI('off');
+  document.getElementById('transcript').classList.add('hidden');
+
+  requestWakeLock();
+
+  // countdown
+  const n = parseInt(settings.count, 10) || 0;
+  if(n > 0){
+    const ov = document.getElementById('countdown-overlay');
+    ov.classList.remove('hidden');
+    for(let i = n; i >= 1; i--){
+      ov.textContent = i;
+      await new Promise(r => setTimeout(r, 1000));
+      if(!prompterOpen){ ov.classList.add('hidden'); return; }
+    }
+    ov.classList.add('hidden');
+  }
+
+  isPlaying = true;
+  updatePlayUI();
+  startTimer();
+
+  if(mode === 'voice'){
+    startFollowLoop();
+    startVoiceRecognition();
+  } else {
+    startAutoScroll();
+  }
+  applyHudAuto();
+}
+
+function exitPrompter(){
+  prompterOpen = false;
+  isPlaying = false;
+  cancelAnimationFrame(prompterAnimationId);
+  clearInterval(elapsedInterval);
+  stopVoiceRecognition();
+  releaseWakeLock();
+  document.getElementById('prompter-view').classList.add('hidden');
+  document.getElementById('edit-view').classList.remove('hidden');
+}
+
+function togglePlay(){
+  isPlaying = !isPlaying;
+  updatePlayUI();
+  if(isPlaying){
+    if(prompterMode === 'voice') startFollowLoop();
+    else startAutoScroll();
+  } else {
+    cancelAnimationFrame(prompterAnimationId);
+  }
+  applyHudAuto();
+}
+function updatePlayUI(){
+  document.getElementById('play-btn').innerHTML = isPlaying ? '&#10074;&#10074;' : '&#9654;';
+}
+function applyHudAuto(){
+  const hide = settings.hidehud && isPlaying;
+  document.getElementById('hud-bottom').classList.toggle('hud-hidden', hide);
+}
+function restartPrompterText(){
+  const container = document.getElementById('scroll-container');
+  container.scrollTop = 0;
+  currentScrollY = 0;
+  targetScrollY = null;
+  matchIndex = 0;
+  if(lastCurrentEl){ lastCurrentEl.style.color = ''; lastCurrentEl = null; }
+  scriptWordEls.forEach(el => { el.style.opacity = ''; el.style.color = ''; });
+  positionCueLine();
+  elapsedSeconds = 0;
+  toast('Back to top');
+}
+function nudgeFont(d){
+  settings.font = Math.max(22, Math.min(110, settings.font + d));
+  try{ localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }catch(e){}
+  document.getElementById('script-body').style.fontSize = settings.font + 'px';
+  toast('Size ' + settings.font);
+}
+function nudgeSpeed(d){
+  settings.speed = Math.max(1, Math.min(10, settings.speed + d));
+  try{ localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }catch(e){}
+  toast('Speed ' + settings.speed);
+}
+
+/* tap script area to pause/resume */
+document.getElementById('scroll-container').addEventListener('click', e => {
+  if(!settings.tap) return;
+  togglePlay();
+});
+/* ----- manual scroll override -----
+   Touching the script releases voice-follow's grip; once the scroll
+   settles, the match position re-anchors to whatever text sits at the
+   cue line, so speaking picks up from where YOU put it. */
+let reanchorTimer = null;
+let userTouched = false;
+function reanchorToViewport(){
+  if(prompterMode !== 'voice' || scriptWordEls.length === 0) return;
+  const c = document.getElementById('scroll-container');
+  const anchorY = c.scrollTop + c.clientHeight * (settings.cue ? settings.cuepos/100 : 0.38);
+  let idx = -1;
+  for(let i = 0; i < scriptWordEls.length; i++){
+    if(scriptWordEls[i].offsetTop >= anchorY){ idx = i; break; }
+  }
+  if(idx < 0) idx = scriptWordEls.length - 1;
+  scriptWordEls.forEach((el, i) => {
+    el.style.opacity = i < idx ? '0.35' : '';
+    el.style.color = '';
+  });
+  lastCurrentEl = null;
+  matchIndex = idx;
+  targetScrollY = null; // stay where the user put it until they speak
+  toast('Picking up from here');
+}
+const sc = document.getElementById('scroll-container');
+sc.addEventListener('touchstart', () => {
+  if(prompterMode === 'voice'){ targetScrollY = null; userTouched = true; } // stop fighting the finger
+}, {passive:true});
+sc.addEventListener('scroll', () => {
+  if(!isPlaying){
+    currentScrollY = sc.scrollTop;
+    positionCueLine();
+  }
+  // only re-anchor for user-driven scrolls (finger down + target released)
+  if(prompterMode === 'voice' && targetScrollY === null && userTouched){
+    currentScrollY = sc.scrollTop;
+    positionCueLine();
+    clearTimeout(reanchorTimer);
+    reanchorTimer = setTimeout(() => { userTouched = false; reanchorToViewport(); }, 350);
+  }
+}, {passive:true});
+
+function startTimer(){
+  elapsedSeconds = 0;
+  clearInterval(elapsedInterval);
+  elapsedInterval = setInterval(() => {
+    if(!isPlaying) return;
+    elapsedSeconds++;
+    const m = String(Math.floor(elapsedSeconds/60)).padStart(2,'0');
+    const s = String(elapsedSeconds%60).padStart(2,'0');
+    document.getElementById('elapsed-time').textContent = m + ':' + s;
+  }, 1000);
+}
+
+/* ---------- Wake lock ---------- */
+async function requestWakeLock(){
+  try{ if('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); }catch(e){}
+}
+function releaseWakeLock(){
+  try{ if(wakeLock){ wakeLock.release(); wakeLock = null; } }catch(e){}
+}
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible' && prompterOpen) requestWakeLock();
+});
+
+/* ---------- Mic UI ---------- */
+function updateMicUI(state, label){
+  const dot = document.getElementById('mic-dot');
+  const txt = document.getElementById('mic-text');
+  dot.className = 'dot' + (state === 'live' ? ' live' : state === 'err' ? ' err' : '');
+  txt.textContent = label || (state === 'live' ? 'FOLLOWING' : state === 'err' ? 'MIC BLOCKED' : 'MIC OFF');
+}
+function micFail(label, hint){
+  updateMicUI('err', label);
+  if(hint){
+    const tc = document.getElementById('transcript');
+    tc.classList.remove('hidden');
+    tc.innerHTML = '<span style="color:var(--bad)">' + hint + '</span>';
+  }
+}
+
+/* ---------- Speech recognition (hardened; ported from working build) ---------- */
+async function startVoiceRecognition(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ micFail('UNSUPPORTED', 'This browser has no speech recognition. Use Safari on iPhone.'); return; }
+
+  recogFatal = false;
+  restartTimestamps = [];
+
+  // Hold the mic for the whole session so permission stays granted
+  if(!micStream){
+    try{ micStream = await navigator.mediaDevices.getUserMedia({
+      audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } }); }
+    catch(e){ micFail('MIC BLOCKED', 'Mic permission denied. Host this file on a real https URL (not opened from disk), then allow the mic.'); return; }
+  }
+
+  if(recognition){ try{ recognition.stop(); }catch(e){} }
+  recognition = new SR();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  let consumedResults = {};
+
+  recognition.onstart = () => {
+    consumedResults = {};
+    updateMicUI('live');
+    document.getElementById('transcript').classList.remove('hidden');
+  };
+
+  let pendingGo = false;
+  let pendingJump = false;
+  recognition.onresult = (event) => {
+    const last = event.results[event.results.length-1][0].transcript.trim().toLowerCase();
+    for(let i = event.resultIndex; i < event.results.length; i++){
+      const words = event.results[i][0].transcript.trim().split(/\s+/).map(normWord).filter(Boolean);
+      const start = consumedResults[i] || 0;
+      for(let w = start; w < words.length; w++){
+        const word = words[w];
+        // "go <cmd>" / "jump <cmd>" — run even while paused; command word is
+        // consumed so it never advances the script match
+        if(pendingGo && CMD_ALIASES[word]){
+          runVoiceCommand(CMD_ALIASES[word]);
+          pendingGo = false; pendingJump = false;
+          continue;
         }
+        if(pendingJump && JUMP_ALIASES[word]){
+          runVoiceCommand(JUMP_ALIASES[word]);
+          pendingGo = false; pendingJump = false;
+          continue;
+        }
+        pendingGo = (word === 'go');
+        pendingJump = (word === 'jump');
+        if(isPlaying) matchSpokenWord(word);
       }
-
-      // Set values from configuration UI and launch
-      async function startPrompter() {
-        text = document.getElementById('script-input').value || 'Enter a script first!';
-        speed = parseFloat(document.getElementById('setting-speed').value);
-        fontSize = parseInt(document.getElementById('setting-size').value);
-        isMirrorHorizontal = document.getElementById('setting-mirror-x').checked;
-        marginWidth = document.getElementById('setting-margin').value;
-        fontFamily = document.getElementById('setting-font').value;
-        alignment = document.getElementById('setting-align').value;
-        showEyeGuide = document.getElementById('setting-eyeguide').checked;
-        voiceControlEnabled = document.getElementById('setting-voice').checked;
-
-        // Apply visual configuration to prompter view
-        const prompterTextBody = document.getElementById('prompter-text-body');
-        buildScriptWords(prompterTextBody, text);
-        
-        // Font sizing
-        prompterTextBody.style.fontSize = fontSize + 'px';
-        document.getElementById('live-font-display').textContent = fontSize + 'px';
-
-        // Column margin setting
-        const textCanvas = document.getElementById('text-canvas');
-        textCanvas.className = 'mx-auto select-none transition-transform duration-100 ease-linear';
-        if (marginWidth === 'narrow') {
-          textCanvas.classList.add('max-w-md');
-        } else if (marginWidth === 'medium') {
-          textCanvas.classList.add('max-w-xl');
-        } else {
-          textCanvas.classList.add('max-w-4xl');
-        }
-
-        // Text alignment
-        prompterTextBody.className = 'leading-relaxed whitespace-pre-wrap';
-        if (alignment === 'left') {
-          prompterTextBody.classList.add('text-left');
-        } else if (alignment === 'center') {
-          prompterTextBody.classList.add('text-center');
-        } else {
-          prompterTextBody.classList.add('text-right');
-        }
-
-        // Font family
-        if (fontFamily === 'space-grotesk') {
-          prompterTextBody.style.fontFamily = "'Space Grotesk', sans-serif";
-        } else if (fontFamily === 'jetbrains-mono') {
-          prompterTextBody.style.fontFamily = "'JetBrains Mono', monospace";
-        } else if (fontFamily === 'playfair-display') {
-          prompterTextBody.style.fontFamily = "'Playfair Display', serif";
-        } else {
-          prompterTextBody.style.fontFamily = "'Inter', sans-serif";
-        }
-
-        // Mirror mode classes
-        const scrollContainer = document.getElementById('scroll-container');
-        if (isMirrorHorizontal) {
-          scrollContainer.classList.add('mirror-x');
-        } else {
-          scrollContainer.classList.remove('mirror-x');
-        }
-
-        // Show/Hide Eye guides
-        const eyeLevelGuide = document.getElementById('eye-level-guide');
-        const eyeLevelBar = document.getElementById('eye-level-bar');
-        if (showEyeGuide) {
-          eyeLevelGuide.classList.remove('hidden');
-          eyeLevelBar.classList.remove('hidden');
-        } else {
-          eyeLevelGuide.classList.add('hidden');
-          eyeLevelBar.classList.add('hidden');
-        }
-
-        // Live speeds setup
-        document.getElementById('prompter-speed-slider').value = speed;
-        document.getElementById('live-speed-display').textContent = speed;
-
-        // View swap
-        document.getElementById('setup-view').classList.add('hidden');
-        document.getElementById('prompter-view').classList.remove('hidden');
-
-        // Reset scroll variables
-        currentScrollY = 0;
-        scrollContainer.scrollTop = 0;
-
-        // Prevent sleep trigger
-        await requestWakeLock();
-
-        // Voice Control trigger (Voice Follow mode always needs the mic)
-        if (prompterMode === 'voice' || voiceControlEnabled) {
-          startVoiceRecognition();
-        } else {
-          stopVoiceRecognition();
-        }
-
-        // Speed slider only matters in Auto Scroll mode
-        const speedBlock = document.getElementById('speed-slider-block');
-        if (speedBlock) speedBlock.classList.toggle('hidden', prompterMode === 'voice');
-
-        // Start playing state
-        isPlaying = true;
-        updatePlayStateUI();
-        if (prompterMode === 'voice') {
-          startFollowLoop();
-        } else {
-          startAutoScroll();
-        }
-        startProgressTimer();
-      }
-
-      function stopPrompter() {
-        // Exit to setup screen
-        cancelAnimationFrame(prompterAnimationId);
-        clearInterval(elapsedInterval);
-        
-        isPlaying = false;
-        releaseWakeLock();
-        stopVoiceRecognition();
-
-        document.getElementById('prompter-view').classList.add('hidden');
-        document.getElementById('setup-view').classList.remove('hidden');
-      }
-
-      // Smooth scrolling engine using requestAnimationFrame
-      function startAutoScroll() {
-        lastFrameTime = performance.now();
-        
-        function scrollLoop(now) {
-          if (!isPlaying) return;
-
-          const delta = (now - lastFrameTime) / 1000; // in seconds
-          lastFrameTime = now;
-
-          // Adjust multiplier so speed range feels standard
-          const scrollStep = speed * 15 * delta;
-          
-          const container = document.getElementById('scroll-container');
-          
-          // Auto-scroll update
-          currentScrollY += scrollStep;
-          container.scrollTop = currentScrollY;
-
-          // Sync back current scroll in case user manually scrolled
-          if (Math.abs(container.scrollTop - currentScrollY) > 5) {
-            currentScrollY = container.scrollTop;
-          }
-
-          // Check if ended
-          const maxScroll = container.scrollHeight - container.clientHeight;
-          if (container.scrollTop >= maxScroll - 5) {
-            isPlaying = false;
-            updatePlayStateUI();
-          }
-
-          // Sync progress bar values
-          const pct = Math.min(100, Math.round((container.scrollTop / Math.max(1, maxScroll)) * 100));
-          document.getElementById('scroll-percent').textContent = pct + '%';
-
-          prompterAnimationId = requestAnimationFrame(scrollLoop);
-        }
-
-        prompterAnimationId = requestAnimationFrame(scrollLoop);
-      }
-
-      // Handle play/pause toggle
-      function togglePrompterPlayState() {
-        isPlaying = !isPlaying;
-        updatePlayStateUI();
-        if (isPlaying) {
-          lastFrameTime = performance.now();
-          if (prompterMode === 'voice') {
-            startFollowLoop();
-          } else {
-            startAutoScroll();
-          }
-        } else {
-          cancelAnimationFrame(prompterAnimationId);
-        }
-      }
-
-      function updatePlayStateUI() {
-        const pBtnText = document.getElementById('play-btn-text');
-        const pBtnIcon = document.getElementById('play-btn-icon');
-        const pausedBadge = document.getElementById('paused-badge');
-
-        if (isPlaying) {
-          pBtnText.textContent = "PAUSE";
-          pBtnIcon.innerHTML = '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>';
-          pausedBadge.classList.add('hidden');
-        } else {
-          pBtnText.textContent = "SCROLL";
-          pBtnIcon.innerHTML = '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>';
-          pausedBadge.classList.remove('hidden');
-        }
-      }
-
-      // Tap screen to pause/play
-      function handleScreenTap(event) {
-        // Only trigger if user clicked outside controls
-        const bottomOverlay = document.getElementById('prompter-bottom-overlay');
-        const topOverlay = document.getElementById('prompter-top-overlay');
-        
-        if (bottomOverlay.contains(event.target) || topOverlay.contains(event.target)) {
-          return;
-        }
-        
-        togglePrompterPlayState();
-      }
-
-      // Scroll speed live manipulation
-      function setPrompterSpeed(value) {
-        speed = parseFloat(value);
-        document.getElementById('live-speed-display').textContent = speed;
-        document.getElementById('prompter-speed-slider').value = speed;
-      }
-
-      function adjustLiveSpeed(val) {
-        let newSpeed = speed + val;
-        newSpeed = Math.max(1, Math.min(12, newSpeed));
-        setPrompterSpeed(newSpeed);
-      }
-
-      // Font size live manipulation
-      function adjustLiveFontSize(val) {
-        fontSize = Math.max(16, Math.min(96, fontSize + val));
-        document.getElementById('prompter-text-body').style.fontSize = fontSize + 'px';
-        document.getElementById('live-font-display').textContent = fontSize + 'px';
-      }
-
-      function restartPrompterText() {
-        currentScrollY = 0;
-        targetScrollY = null;
-        matchIndex = 0;
-        lastCurrentEl = null;
-        scriptWordEls.forEach(el => { el.style.opacity = ''; el.style.color = ''; });
-        document.getElementById('scroll-container').scrollTop = 0;
-        showToast("Returned to top");
-      }
-
-      // Visual Toast confirmation
-      function showToast(message) {
-        const toast = document.getElementById('action-toast');
-        toast.textContent = message;
-        toast.classList.remove('opacity-0');
-        toast.classList.add('opacity-100');
-        setTimeout(() => {
-          toast.classList.remove('opacity-100');
-          toast.classList.add('opacity-0');
-        }, 1500);
-      }
-
-      // Time tracking statistics
-      function startProgressTimer() {
-        prompterStartTime = Date.now();
-        elapsedSeconds = 0;
-        
-        clearInterval(elapsedInterval);
-        elapsedInterval = setInterval(() => {
-          if (!isPlaying) return;
-          
-          elapsedSeconds++;
-          const mins = Math.floor(elapsedSeconds / 60).toString().padStart(2, '0');
-          const secs = (elapsedSeconds % 60).toString().padStart(2, '0');
-          document.getElementById('elapsed-time').textContent = `${mins}:${secs}`;
-        }, 1000);
-      }
-
-      // ===== VOICE FOLLOW ENGINE =====
-
-      // Normalize a word for matching: lowercase, strip punctuation
-      function normWord(w) {
-        return w.toLowerCase().replace(/[^a-z0-9']/g, '');
-      }
-
-      // Render the script as individual word <span>s (whitespace preserved by pre-wrap)
-      function buildScriptWords(bodyEl, rawText) {
-        bodyEl.innerHTML = '';
-        scriptWordEls = [];
-        matchIndex = 0;
-        targetScrollY = null;
-        lastCurrentEl = null;
-
-        const frag = document.createDocumentFragment();
-        rawText.split(/(\s+)/).forEach(tok => {
-          if (tok === '') return;
-          if (/^\s+$/.test(tok)) {
-            frag.appendChild(document.createTextNode(tok));
-            return;
-          }
-          const span = document.createElement('span');
-          span.textContent = tok;
-          const norm = normWord(tok);
-          if (norm) {
-            span.dataset.norm = norm;
-            scriptWordEls.push(span);
-          }
-          frag.appendChild(span);
-        });
-        bodyEl.appendChild(frag);
-      }
-
-      // Forgiving comparison: exact match, or shared stem on longer words
-      // (helps with plurals, -ing endings, and recognizer near-misses)
-      function wordsClose(a, b) {
-        if (a === b) return true;
-        if (a.length >= 4 && b.length >= 4) {
-          const stem = Math.min(a.length, b.length, 5);
-          return a.slice(0, stem) === b.slice(0, stem);
-        }
-        return false;
-      }
-
-      // Try to advance the script position for one spoken word.
-      // Searches a window ahead of the current position so a skipped
-      // or misheard word doesn't stall the prompter.
-      function matchSpokenWord(spoken) {
-        const LOOKAHEAD = 14;
-        const end = Math.min(scriptWordEls.length, matchIndex + LOOKAHEAD);
-        for (let i = matchIndex; i < end; i++) {
-          if (wordsClose(scriptWordEls[i].dataset.norm, spoken)) {
-            // Dim everything up to and including the match
-            for (let j = matchIndex; j <= i; j++) {
-              scriptWordEls[j].style.opacity = '0.35';
-              scriptWordEls[j].style.color = '';
-            }
-            // Highlight the current word
-            if (lastCurrentEl) lastCurrentEl.style.color = '';
-            const cur = scriptWordEls[i];
-            cur.style.opacity = '1';
-            cur.style.color = '#34d399';
-            lastCurrentEl = cur;
-
-            matchIndex = i + 1;
-            setFollowTarget(cur);
-            return true;
-          }
-        }
-        return false;
-      }
-
-      // Ease the scroll so the current word sits just above the eye line
-      function setFollowTarget(el) {
-        const container = document.getElementById('scroll-container');
-        targetScrollY = Math.max(0, el.offsetTop - container.clientHeight * 0.42);
-      }
-
-      // Smooth-scroll loop for voice mode (replaces the constant-speed loop)
-      function startFollowLoop() {
-        function followLoop() {
-          if (!isPlaying || prompterMode !== 'voice') return;
-          const container = document.getElementById('scroll-container');
-
-          if (targetScrollY !== null) {
-            const diff = targetScrollY - currentScrollY;
-            if (Math.abs(diff) < 0.5) {
-              currentScrollY = targetScrollY;
-            } else {
-              currentScrollY += diff * 0.12; // ease toward target
-            }
-            container.scrollTop = currentScrollY;
-          } else {
-            currentScrollY = container.scrollTop;
-          }
-
-          const maxScroll = container.scrollHeight - container.clientHeight;
-          const pct = Math.min(100, Math.round((container.scrollTop / Math.max(1, maxScroll)) * 100));
-          document.getElementById('scroll-percent').textContent = pct + '%';
-
-          prompterAnimationId = requestAnimationFrame(followLoop);
-        }
-        prompterAnimationId = requestAnimationFrame(followLoop);
-      }
-
-      // Speech Recognition Integration
-      function setMicFailedUI(label, hint) {
-        const micBadge = document.getElementById('mic-status');
-        micBadge.className = 'flex items-center space-x-1.5 bg-red-950 px-2 py-1 rounded-lg border border-red-900';
-        document.getElementById('mic-indicator-dot').className = 'w-2 h-2 rounded-full bg-red-500';
-        document.getElementById('mic-text').textContent = label;
-        if (hint) {
-          const tc = document.getElementById('transcript-container');
-          tc.classList.remove('hidden');
-          tc.innerHTML = '<span class="text-red-400">' + hint + '</span>';
-        }
-      }
-
-      async function startVoiceRecognition() {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-          setMicFailedUI('UNSUPPORTED');
-          return;
-        }
-
-        recogFatal = false;
-        restartTimestamps = [];
-
-        // Grab the mic ONCE and hold it for the whole session.
-        // This keeps the permission grant alive so the browser doesn't
-        // re-prompt every time recognition restarts.
-        if (!micStream) {
-          try {
-            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          } catch (e) {
-            setMicFailedUI('MIC BLOCKED', 'Microphone permission was denied, or this page is not allowed to keep it. If you opened the file directly from disk, the browser may refuse — see hosting note.');
-            return;
-          }
-        }
-
-        if (recognition) {
-          try { recognition.stop(); } catch(e){}
-        }
-
-        recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true; // Instant voice command triggers!
-        recognition.lang = 'en-US';
-
-        const lastCommandTimes = {};
-        function throttleCommand(key, duration, action) {
-          const now = Date.now();
-          const lastTime = lastCommandTimes[key] || 0;
-          if (now - lastTime > duration) {
-            lastCommandTimes[key] = now;
-            action();
-          }
-        }
-
-        // Tracks how many words of each (interim) result we already matched,
-        // so re-fired interim results don't double-advance the script
-        let consumedResults = {};
-
-        recognition.onstart = () => {
-          consumedResults = {}; // result indices reset on every (re)start
-          const micBadge = document.getElementById('mic-status');
-          micBadge.className = 'flex items-center space-x-1.5 bg-emerald-950 px-2 py-1 rounded-lg border border-emerald-900';
-          document.getElementById('mic-indicator-dot').className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
-          document.getElementById('mic-text').textContent = prompterMode === 'voice' ? 'FOLLOWING' : 'LISTENING';
-          document.getElementById('transcript-container').classList.remove('hidden');
-        };
-
-        recognition.onresult = (event) => {
-          const lastResultIndex = event.results.length - 1;
-          const transcript = event.results[lastResultIndex][0].transcript.trim().toLowerCase();
-
-          // VOICE FOLLOW MODE: match spoken words to script position
-          if (prompterMode === 'voice') {
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-              const words = event.results[i][0].transcript.trim().split(/\s+/).map(normWord).filter(Boolean);
-              const start = consumedResults[i] || 0;
-              for (let w = start; w < words.length; w++) {
-                if (isPlaying) matchSpokenWord(words[w]);
-              }
-              consumedResults[i] = words.length;
-            }
-            document.getElementById('transcript-container').innerHTML =
-              `Following: <strong class="text-emerald-400">"${transcript.split(/\s+/).slice(-6).join(' ')}"</strong>`;
-            return; // no command parsing in follow mode
-          }
-
-          document.getElementById('transcript-container').innerHTML = `Heard: <strong class="text-emerald-400">"${transcript}"</strong>`;
-          
-          // Action mapping with throttling
-          if (transcript.includes('stop') || transcript.includes('pause') || transcript.includes('wait') || transcript.includes('hold')) {
-            throttleCommand('pause', 1000, () => {
-              if (isPlaying) {
-                isPlaying = false;
-                cancelAnimationFrame(prompterAnimationId);
-                updatePlayStateUI();
-                showToast("Voice Command: Paused");
-              }
-            });
-          } else if (transcript.includes('go') || transcript.includes('start') || transcript.includes('resume') || transcript.includes('scroll') || transcript.includes('play')) {
-            throttleCommand('play', 1000, () => {
-              if (!isPlaying) {
-                isPlaying = true;
-                lastFrameTime = performance.now();
-                startAutoScroll();
-                updatePlayStateUI();
-                showToast("Voice Command: Resumed");
-              }
-            });
-          } else if (transcript.includes('faster') || transcript.includes('speed up') || transcript.includes('accelerate')) {
-            throttleCommand('faster', 1000, () => {
-              adjustLiveSpeed(1);
-              showToast("Voice Command: Faster");
-            });
-          } else if (transcript.includes('slower') || transcript.includes('slow down') || transcript.includes('decelerate')) {
-            throttleCommand('slower', 1000, () => {
-              adjustLiveSpeed(-1);
-              showToast("Voice Command: Slower");
-            });
-          } else if (transcript.includes('reset') || transcript.includes('restart') || transcript.includes('beginning') || transcript.includes('top')) {
-            throttleCommand('reset', 2000, () => {
-              restartPrompterText();
-            });
-          } else if (transcript.includes('bigger') || transcript.includes('larger') || transcript.includes('zoom in')) {
-            throttleCommand('bigger', 1000, () => {
-              adjustLiveFontSize(4);
-              showToast("Voice Command: Zoom In");
-            });
-          } else if (transcript.includes('smaller') || transcript.includes('tiny') || transcript.includes('zoom out')) {
-            throttleCommand('smaller', 1000, () => {
-              adjustLiveFontSize(-4);
-              showToast("Voice Command: Zoom Out");
-            });
-          }
-        };
-
-        recognition.onerror = (event) => {
-          console.warn('Speech error:', event.error);
-          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-            recogFatal = true;
-          }
-        };
-
-        recognition.onend = () => {
-          // Permission was denied or the browser refused the speech service:
-          // stop retrying so the user isn't trapped in a permission-prompt loop
-          if (recogFatal) {
-            setMicFailedUI('MIC BLOCKED', 'The browser refused speech recognition on this page. Pages opened straight from disk (file://) often cannot use the mic reliably. Host the file (Netlify Drop) or run it from localhost, then reload.');
-            return;
-          }
-
-          // If recognition keeps dying within seconds, something is wrong —
-          // give up after 6 rapid restarts instead of looping forever
-          const now = Date.now();
-          restartTimestamps = restartTimestamps.filter(t => now - t < 10000);
-          if (restartTimestamps.length >= 6) {
-            setMicFailedUI('MIC FAILED', 'Speech recognition keeps dropping. Check that no other app is holding the mic, then exit and relaunch the prompter.');
-            return;
-          }
-
-          // Otherwise the prompter is still open, so restart silently (iOS ends sessions periodically)
-          if (document.getElementById('prompter-view').classList.contains('hidden') === false && (voiceControlEnabled || prompterMode === 'voice')) {
-            restartTimestamps.push(now);
-            setTimeout(() => {
-              try { recognition.start(); } catch(e){}
-            }, 400);
-          }
-        };
-
-        try {
-          recognition.start();
-        } catch(e) {
-          console.error(e);
-        }
-      }
-
-      function stopVoiceRecognition() {
-        if (recognition) {
-          try {
-            recognition.stop();
-          } catch(e){}
-          recognition = null;
-        }
-        if (micStream) {
-          micStream.getTracks().forEach(t => t.stop());
-          micStream = null;
-        }
-        document.getElementById('mic-status').className = 'flex items-center space-x-1.5 bg-neutral-900/80 px-2 py-1 rounded-lg border border-neutral-800';
-        document.getElementById('mic-indicator-dot').className = 'w-2 h-2 rounded-full bg-neutral-600';
-        document.getElementById('mic-text').textContent = 'MIC OFF';
-        document.getElementById('transcript-container').classList.add('hidden');
-      }
-
-      // Re-trigger wake lock on visibility change
-      document.addEventListener('visibilitychange', async () => {
-        if (wakeLock !== null && document.visibilityState === 'visible') {
-          await requestWakeLock();
-        }
-      });
-    </script>
-  </body>
+      consumedResults[i] = words.length;
+    }
+    document.getElementById('transcript').innerHTML =
+      'Following: <strong>"' + last.split(/\s+/).slice(-6).join(' ') + '"</strong>';
+  };
+
+  recognition.onerror = (event) => {
+    if(event.error === 'not-allowed' || event.error === 'service-not-allowed') recogFatal = true;
+  };
+
+  recognition.onend = () => {
+    if(recogFatal){
+      micFail('MIC BLOCKED', 'Browser refused speech recognition. Make sure the page is on https (Netlify Drop works), then reload.');
+      return;
+    }
+    const now = Date.now();
+    restartTimestamps = restartTimestamps.filter(t => now - t < 10000);
+    if(restartTimestamps.length >= 6){
+      micFail('MIC FAILED', 'Recognition keeps dropping. Close other apps using the mic, then exit and relaunch.');
+      return;
+    }
+    if(prompterOpen && prompterMode === 'voice'){
+      restartTimestamps.push(now);
+      setTimeout(() => { try{ recognition.start(); }catch(e){} }, 400);
+    }
+  };
+
+  try{ recognition.start(); }catch(e){}
+}
+
+function stopVoiceRecognition(){
+  if(recognition){ try{ recognition.stop(); }catch(e){} recognition = null; }
+  if(micStream){ micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  updateMicUI('off');
+}
+
+/* =====================================================================
+   INIT
+===================================================================== */
+renderThemes();
+settingsToUI();
+applySettings();
+renderLibrary();
+// keep cue line positioned on rotate/resize
+window.addEventListener('resize', positionCueLine);
+</script>
+</body>
 </html>

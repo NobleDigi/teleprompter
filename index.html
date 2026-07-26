@@ -33,6 +33,8 @@ input,textarea,select{font:inherit;color:inherit}
 .btn-accent{background:var(--accent);color:#000;border-color:var(--accent)}
 .btn-danger{color:var(--bad)}
 .btn-block{width:100%;justify-content:center}
+.storage-actions{display:flex;gap:10px;margin-top:10px}
+.storage-actions .btn{flex:1;justify-content:center;font-size:13px;padding:10px 12px}
 .script-card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:10px;display:flex;align-items:center;gap:12px}
 .script-card .meta{flex:1;min-width:0}
 .script-card .meta .name{font-weight:600;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -104,7 +106,10 @@ input[type=color]{width:42px;height:32px;border:none;border-radius:8px;backgroun
 .dot.live{background:var(--good);animation:pulse 1.2s infinite}
 .dot.err{background:var(--bad)}
 @keyframes pulse{50%{opacity:.35}}
-#transcript{font-size:12px;color:var(--dim);background:rgba(20,20,20,.82);border:1px solid var(--border);border-radius:10px;padding:6px 10px;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;backdrop-filter:blur(6px)}
+#transcript{position:fixed;left:12px;bottom:calc(env(safe-area-inset-bottom) + 72px);font-size:11px;color:var(--dim);
+  background:rgba(20,20,20,.5);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:6px 10px;
+  max-width:min(68vw,520px);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;backdrop-filter:blur(6px);
+  opacity:.5;pointer-events:none}
 #transcript strong{color:var(--good);font-weight:600}
 .ctl-row{display:flex;gap:8px;justify-content:center;align-items:center}
 .ctl{background:rgba(20,20,20,.85);border:1px solid var(--border);border-radius:12px;min-width:52px;height:48px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;backdrop-filter:blur(6px);padding:0 14px}
@@ -126,6 +131,11 @@ input[type=color]{width:42px;height:32px;border:none;border-radius:8px;backgroun
     <span class="pill" id="storage-pill">saved on this phone</span>
   </div>
   <button class="btn btn-accent btn-block" onclick="newScript()">+ New Script</button>
+  <div class="storage-actions">
+    <button class="btn" onclick="exportBackup()">&#8595; Backup to Files</button>
+    <button class="btn" onclick="document.getElementById('backup-file').click()">&#8593; Restore Backup</button>
+  </div>
+  <input class="hidden" id="backup-file" type="file" accept="application/json,.json" onchange="importBackup(event)" />
   <div style="height:14px"></div>
   <div id="script-list"></div>
   <div class="empty hidden" id="lib-empty">No scripts yet.<br>Tap <b>New Script</b>, paste your text, and it saves automatically on this phone.</div>
@@ -168,7 +178,7 @@ input[type=color]{width:42px;height:32px;border:none;border-radius:8px;backgroun
       <div class="set-row"><label>Line height <span class="val" id="v-line">1.4</span></label>
         <input type="range" id="s-line" min="10" max="22" value="14" oninput="applySettings()"></div>
       <div class="set-row"><label>Width <span class="val" id="v-width">100%</span></label>
-        <input type="range" id="s-width" min="50" max="100" value="100" oninput="applySettings()"></div>
+        <input type="range" id="s-width" min="30" max="100" value="100" oninput="applySettings()"></div>
       <div class="set-row"><label>Font</label>
         <div class="seg" id="s-fontfam">
           <button data-v="sans" class="on" onclick="segPick(this)">Sans</button>
@@ -251,22 +261,166 @@ input[type=color]{width:42px;height:32px;border:none;border-radius:8px;backgroun
 <script>
 'use strict';
 /* =====================================================================
-   STORAGE — script library, all local to this phone (localStorage)
+   STORAGE — localStorage + IndexedDB mirror, all local to this device
 ===================================================================== */
 const LS_SCRIPTS = 'tp_scripts_v1';
 const LS_SETTINGS = 'tp_settings_v1';
 const LS_ACTIVE = 'tp_active_v1';
+const DB_NAME = 'teleprompter_local_v2';
+const DB_STORE = 'backups';
+const DB_KEY = 'latest';
+let appReady = false;
 
 function loadScripts(){
   try{ const a = JSON.parse(localStorage.getItem(LS_SCRIPTS)); return Array.isArray(a) ? a : []; }
   catch(e){ return []; }
 }
 function saveScripts(){
-  try{ localStorage.setItem(LS_SCRIPTS, JSON.stringify(scripts)); }
-  catch(e){ toast('Storage full — could not save'); }
+  let saved = false;
+  try{
+    localStorage.setItem(LS_SCRIPTS, JSON.stringify(scripts));
+    localStorage.setItem(LS_ACTIVE, activeId || '');
+    saved = true;
+  }catch(e){
+    document.getElementById('storage-pill').textContent = 'backup recommended';
+    toast('Device storage unavailable — make a backup');
+  }
+  mirrorState();
+  return saved;
 }
 let scripts = loadScripts();
-let activeId = localStorage.getItem(LS_ACTIVE) || null;
+let activeId = (() => {
+  try{ return localStorage.getItem(LS_ACTIVE) || null; }
+  catch(e){ return null; }
+})();
+
+function openLocalDB(){
+  return new Promise(resolve => {
+    if(!window.indexedDB){ resolve(null); return; }
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if(!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+  });
+}
+
+let mirrorTimer = null;
+function mirrorState(){
+  if(!appReady) return;
+  clearTimeout(mirrorTimer);
+  mirrorTimer = setTimeout(async () => {
+    const db = await openLocalDB();
+    if(!db) return;
+    try{
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      tx.objectStore(DB_STORE).put({
+        version:2,
+        scripts:scripts,
+        settings:typeof settings === 'undefined' ? null : settings,
+        activeId:activeId,
+        savedAt:Date.now()
+      }, DB_KEY);
+      tx.oncomplete = () => db.close();
+      tx.onerror = () => db.close();
+    }catch(e){ db.close(); }
+  }, 150);
+}
+
+async function restoreLocalMirror(){
+  if(scripts.length) return;
+  const db = await openLocalDB();
+  if(!db) return;
+  const saved = await new Promise(resolve => {
+    try{
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const request = tx.objectStore(DB_STORE).get(DB_KEY);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => resolve(null);
+    }catch(e){ resolve(null); }
+  });
+  db.close();
+  if(scripts.length) return;
+  if(!saved || !Array.isArray(saved.scripts) || !saved.scripts.length) return;
+  scripts = saved.scripts;
+  activeId = saved.activeId || scripts[0].id;
+  if(saved.settings){
+    settings = Object.assign({}, DEFAULTS, saved.settings);
+    settingsToUI();
+    applySettings();
+  }
+  saveScripts();
+  renderLibrary();
+  toast('Scripts restored from this device');
+}
+
+function backupPayload(){
+  return JSON.stringify({
+    app:'Teleprompter',
+    version:2,
+    exportedAt:new Date().toISOString(),
+    scripts:scripts,
+    settings:settings,
+    activeId:activeId
+  }, null, 2);
+}
+
+async function exportBackup(){
+  flushSave();
+  const stamp = new Date().toISOString().slice(0,10);
+  const filename = 'teleprompter-backup-' + stamp + '.json';
+  const file = new File([backupPayload()], filename, {type:'application/json'});
+  try{
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'Teleprompter backup'});
+    }else{
+      const url = URL.createObjectURL(file);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    toast('Backup ready');
+  }catch(e){
+    if(e.name !== 'AbortError') toast('Could not create backup');
+  }
+}
+
+async function importBackup(event){
+  const input = event.target;
+  const file = input.files && input.files[0];
+  input.value = '';
+  if(!file) return;
+  try{
+    const data = JSON.parse(await file.text());
+    if(!data || !Array.isArray(data.scripts)) throw new Error('Invalid backup');
+    const restored = data.scripts
+      .filter(s => s && typeof s.text === 'string')
+      .map(s => ({
+        id:String(s.id || uid()),
+        name:String(s.name || ''),
+        text:s.text,
+        updated:Number(s.updated) || Date.now()
+      }));
+    if(!confirm('Restore ' + restored.length + ' script' + (restored.length === 1 ? '' : 's') + '? This replaces the scripts currently on this device.')) return;
+    scripts = restored;
+    activeId = data.activeId || (scripts[0] && scripts[0].id) || null;
+    if(data.settings) settings = Object.assign({}, DEFAULTS, data.settings);
+    saveScripts();
+    try{ localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }catch(e){}
+    settingsToUI();
+    applySettings();
+    renderLibrary();
+    toast('Backup restored');
+  }catch(e){
+    toast('That is not a valid teleprompter backup');
+  }
+}
 
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function getActive(){ return scripts.find(s => s.id === activeId) || null; }
@@ -313,7 +467,7 @@ function newScript(){
 let saveTimer = null;
 function openEditor(id){
   activeId = id;
-  localStorage.setItem(LS_ACTIVE, id);
+  try{ localStorage.setItem(LS_ACTIVE, id); }catch(e){}
   const s = getActive(); if(!s) return;
   document.getElementById('edit-name').value = s.name;
   document.getElementById('edit-text').value = s.text;
@@ -328,7 +482,7 @@ function closeEditor(){
 }
 function scheduleSave(){
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(flushSave, 500);
+  saveTimer = setTimeout(flushSave, 200);
 }
 function flushSave(){
   clearTimeout(saveTimer);
@@ -344,7 +498,10 @@ function flushSave(){
 }
 document.getElementById('edit-name').addEventListener('input', scheduleSave);
 document.getElementById('edit-text').addEventListener('input', scheduleSave);
+document.getElementById('edit-name').addEventListener('blur', flushSave);
+document.getElementById('edit-text').addEventListener('blur', flushSave);
 window.addEventListener('pagehide', flushSave);
+window.addEventListener('beforeunload', flushSave);
 document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'hidden') flushSave(); });
 
 /* =====================================================================
@@ -418,6 +575,7 @@ function applySettings(){
   settings.hidehud = document.getElementById('s-hidehud').checked;
   settings.speed = +document.getElementById('s-speed').value;
   try{ localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }catch(e){}
+  mirrorState();
 
   document.getElementById('v-font').textContent = settings.font;
   document.getElementById('v-line').textContent = (settings.line/10).toFixed(1);
@@ -505,6 +663,7 @@ let micStream = null;
 let recogFatal = false;
 let restartTimestamps = [];
 let prompterOpen = false;
+let startInProgress = false;
 let missBuffer = [];
 
 function toast(msg){
@@ -766,9 +925,15 @@ function updatePct(container){
 
 /* ---------- Start / stop ---------- */
 async function startPrompter(mode){
+  if(startInProgress) return;
+  startInProgress = true;
   flushSave();
   const s = getActive();
-  if(!s || !s.text.trim()){ toast('Script is empty'); return; }
+  if(!s || !s.text.trim()){
+    startInProgress = false;
+    toast('Script is empty');
+    return;
+  }
   prompterMode = mode;
   prompterOpen = true;
 
@@ -785,6 +950,18 @@ async function startPrompter(mode){
 
   requestWakeLock();
 
+  // Ask for microphone access before showing the countdown. This prevents
+  // the iOS permission sheet from covering the first lines of the script.
+  if(mode === 'voice'){
+    const micReady = await prepareVoiceRecognition();
+    if(!micReady || !prompterOpen){
+      isPlaying = false;
+      updatePlayUI();
+      startInProgress = false;
+      return;
+    }
+  }
+
   // countdown
   const n = parseInt(settings.count, 10) || 0;
   if(n > 0){
@@ -793,7 +970,11 @@ async function startPrompter(mode){
     for(let i = n; i >= 1; i--){
       ov.textContent = i;
       await new Promise(r => setTimeout(r, 1000));
-      if(!prompterOpen){ ov.classList.add('hidden'); return; }
+      if(!prompterOpen){
+        ov.classList.add('hidden');
+        startInProgress = false;
+        return;
+      }
     }
     ov.classList.add('hidden');
   }
@@ -809,10 +990,12 @@ async function startPrompter(mode){
     startAutoScroll();
   }
   applyHudAuto();
+  startInProgress = false;
 }
 
 function exitPrompter(){
   prompterOpen = false;
+  startInProgress = false;
   isPlaying = false;
   cancelAnimationFrame(prompterAnimationId);
   clearInterval(elapsedInterval);
@@ -855,12 +1038,14 @@ function restartPrompterText(){
 function nudgeFont(d){
   settings.font = Math.max(22, Math.min(110, settings.font + d));
   try{ localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }catch(e){}
+  mirrorState();
   document.getElementById('script-body').style.fontSize = settings.font + 'px';
   toast('Size ' + settings.font);
 }
 function nudgeSpeed(d){
   settings.speed = Math.max(1, Math.min(10, settings.speed + d));
   try{ localStorage.setItem(LS_SETTINGS, JSON.stringify(settings)); }catch(e){}
+  mirrorState();
   toast('Speed ' + settings.speed);
 }
 
@@ -951,19 +1136,43 @@ function micFail(label, hint){
 }
 
 /* ---------- Speech recognition (hardened; ported from working build) ---------- */
-async function startVoiceRecognition(){
+async function prepareVoiceRecognition(){
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR){ micFail('UNSUPPORTED', 'This browser has no speech recognition. Use Safari on iPhone.'); return; }
-
-  recogFatal = false;
-  restartTimestamps = [];
+  if(!SR){
+    micFail('UNSUPPORTED', 'This browser has no speech recognition. Use Safari on iPhone.');
+    return false;
+  }
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    micFail('MIC BLOCKED', 'Microphone access needs Safari on a secure https page.');
+    return false;
+  }
 
   // Hold the mic for the whole session so permission stays granted
   if(!micStream){
-    try{ micStream = await navigator.mediaDevices.getUserMedia({
-      audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } }); }
-    catch(e){ micFail('MIC BLOCKED', 'Mic permission denied. Host this file on a real https URL (not opened from disk), then allow the mic.'); return; }
+    updateMicUI('off', 'ALLOW MIC');
+    try{
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}
+      });
+    }catch(e){
+      const denied = e && (e.name === 'NotAllowedError' || e.name === 'SecurityError');
+      micFail('MIC BLOCKED', denied
+        ? 'Microphone permission was denied. Allow it in Safari Website Settings, then try again.'
+        : 'The microphone is unavailable. Close other apps using it, then try again.');
+      return false;
+    }
   }
+  document.getElementById('transcript').classList.add('hidden');
+  updateMicUI('off', 'MIC READY');
+  return true;
+}
+
+async function startVoiceRecognition(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR || (!micStream && !(await prepareVoiceRecognition()))) return false;
+
+  recogFatal = false;
+  restartTimestamps = [];
 
   if(recognition){ try{ recognition.stop(); }catch(e){} }
   recognition = new SR();
@@ -976,13 +1185,12 @@ async function startVoiceRecognition(){
   recognition.onstart = () => {
     consumedResults = {};
     updateMicUI('live');
-    document.getElementById('transcript').classList.remove('hidden');
+    document.getElementById('transcript').classList.add('hidden');
   };
 
   let pendingGo = false;
   let pendingJump = false;
   recognition.onresult = (event) => {
-    const last = event.results[event.results.length-1][0].transcript.trim().toLowerCase();
     for(let i = event.resultIndex; i < event.results.length; i++){
       const words = event.results[i][0].transcript.trim().split(/\s+/).map(normWord).filter(Boolean);
       const start = consumedResults[i] || 0;
@@ -1006,8 +1214,6 @@ async function startVoiceRecognition(){
       }
       consumedResults[i] = words.length;
     }
-    document.getElementById('transcript').innerHTML =
-      'Following: <strong>"' + last.split(/\s+/).slice(-6).join(' ') + '"</strong>';
   };
 
   recognition.onerror = (event) => {
@@ -1031,7 +1237,13 @@ async function startVoiceRecognition(){
     }
   };
 
-  try{ recognition.start(); }catch(e){}
+  try{
+    recognition.start();
+    return true;
+  }catch(e){
+    micFail('MIC FAILED', 'Speech recognition could not start. Exit and try again.');
+    return false;
+  }
 }
 
 function stopVoiceRecognition(){
@@ -1047,6 +1259,14 @@ renderThemes();
 settingsToUI();
 applySettings();
 renderLibrary();
+(async () => {
+  await restoreLocalMirror();
+  appReady = true;
+  mirrorState();
+  if(navigator.storage && navigator.storage.persist){
+    navigator.storage.persist().catch(() => {});
+  }
+})();
 // keep cue line positioned on rotate/resize
 window.addEventListener('resize', positionCueLine);
 </script>

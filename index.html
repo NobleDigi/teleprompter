@@ -3,10 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<title>Teleprompter</title>
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black" />
-<meta name="apple-mobile-web-app-title" content="Prompter" />
+<title>Teleprompter SOL Fixed 7</title>
+<!--
+  Deliberately not marked apple-mobile-web-app-capable. Apple's speech
+  recognition works in Safari but is unavailable in iPhone Home Screen
+  web apps, even though those apps can still turn on the microphone.
+-->
 <meta name="theme-color" content="#000000" />
 <style>
 /* ============ SELF-CONTAINED: no CDNs, no web fonts, works offline ============ */
@@ -81,7 +83,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;heigh
 input[type=color]{width:42px;height:32px;border:none;border-radius:8px;background:var(--panel);padding:2px}
 
 /* ---------- Prompter ---------- */
-#prompter-view{position:fixed;inset:0;background:var(--script-bg);display:flex;flex-direction:column}
+#prompter-view{position:fixed;inset:0;width:100vw;height:100dvh;min-height:100dvh;background:var(--script-bg);display:flex;flex-direction:column}
 #scroll-container{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative}
 #scroll-container::-webkit-scrollbar{display:none}
 #script-body{white-space:pre-wrap;word-break:break-word;color:var(--script-color);font-weight:600;
@@ -118,6 +120,13 @@ input[type=color]{width:42px;height:32px;border:none;border-radius:8px;backgroun
 #countdown-overlay{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;font-size:110px;font-weight:800}
 #toast{position:fixed;top:calc(env(safe-area-inset-top) + 60px);left:50%;transform:translateX(-50%);z-index:80;background:rgba(30,30,30,.95);border:1px solid var(--border);border-radius:12px;padding:10px 16px;font-size:14px;font-weight:600;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
 #toast.show{opacity:1}
+#voice-app-notice{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.9);padding:calc(env(safe-area-inset-top) + 20px) 20px calc(env(safe-area-inset-bottom) + 20px);display:flex;align-items:center;justify-content:center}
+.voice-notice-card{width:min(100%,460px);background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:22px}
+.voice-notice-card h2{font-size:22px;margin-bottom:10px}
+.voice-notice-card p{color:#d4d4d4;font-size:15px;line-height:1.5;margin-bottom:12px}
+.voice-notice-card .voice-note{color:var(--dim);font-size:13px}
+.voice-notice-actions{display:grid;gap:10px;margin-top:18px}
+.voice-notice-actions .btn{text-decoration:none;justify-content:center}
 .serif{font-family:Georgia,'Times New Roman',serif}
 .mono{font-family:ui-monospace,Menlo,monospace}
 </style>
@@ -152,7 +161,7 @@ input[type=color]{width:42px;height:32px;border:none;border-radius:8px;backgroun
   <textarea id="edit-text" placeholder="Paste or dictate your script here..."></textarea>
   <div class="row">
     <button class="btn" onclick="startPrompter('auto')">&#9654; Auto Scroll</button>
-    <button class="btn btn-accent" onclick="startPrompter('voice')">&#127908; Voice Follow</button>
+    <button class="btn btn-accent" onclick="startVoiceFollow()">&#127908; Voice Follow</button>
   </div>
   <p class="hint">Anything in <b>[square brackets]</b> shows in orange as a stage direction. In voice mode you do not read it aloud; the prompter skips past it automatically.<br><br>
   Voice commands: <b>"go top / restart"</b> = start of script &middot; <b>"go previous"</b> = back 2 sentences &middot; <b>"go next"</b> = ahead 2 sentences &middot; <b>"go current"</b> = start of current sentence &middot; <b>"jump back"</b> / <b>"jump next"</b> = previous / next paragraph. All work while paused. You can also drag the script with your finger; when you start speaking, it picks up from wherever you left it.</p>
@@ -257,6 +266,17 @@ input[type=color]{width:42px;height:32px;border:none;border-radius:8px;backgroun
 
 <div id="countdown-overlay" class="hidden"></div>
 <div id="toast"></div>
+<div id="voice-app-notice" class="hidden" role="dialog" aria-modal="true" aria-labelledby="voice-app-title">
+  <div class="voice-notice-card">
+    <h2 id="voice-app-title">Voice Follow needs Safari</h2>
+    <p>This Home Screen app can turn on the microphone, but iPhone does not return Apple speech-recognition results inside the standalone app. Version 5 may therefore have looked broken even though its Version 3 voice engine was intact.</p>
+    <p class="voice-note">Open Version 7 in Safari. For a Home Screen shortcut, delete the old icon, add Version 7 again, and turn off <b>Open as Web App</b> if iPhone shows that option.</p>
+    <div class="voice-notice-actions">
+      <a id="voice-safari-link" class="btn btn-accent btn-block" href="#" target="_blank" rel="noopener">Open in Safari</a>
+      <button class="btn btn-block" onclick="closeVoiceAppNotice()">Not Now</button>
+    </div>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -1002,6 +1022,83 @@ function updatePct(container){
     Math.min(100, Math.round(container.scrollTop / maxScroll * 100)) + '%';
 }
 
+/* ---------- Fullscreen wrapper: Voice Follow only ---------- */
+let voiceOwnedFullscreen = false;
+
+function isStandaloneWebApp(){
+  return navigator.standalone === true ||
+    (window.matchMedia && (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.matchMedia('(display-mode: fullscreen)').matches
+    ));
+}
+
+function showVoiceAppNotice(){
+  document.getElementById('voice-safari-link').href = location.href;
+  document.getElementById('voice-app-notice').classList.remove('hidden');
+}
+
+function closeVoiceAppNotice(){
+  document.getElementById('voice-app-notice').classList.add('hidden');
+}
+
+function requestVoiceFullscreen(){
+  const root = document.documentElement;
+  // iPhone Safari reports fullscreen disabled for arbitrary HTML. Skipping
+  // the request there protects the already-started microphone/voice flow.
+  if(document.fullscreenEnabled !== true ||
+     typeof root.requestFullscreen !== 'function' ||
+     document.fullscreenElement) return;
+  try{
+    const request = root.requestFullscreen({navigationUI:'hide'});
+    if(request && request.then){
+      request.then(() => {
+        if(!prompterOpen || prompterMode !== 'voice'){
+          if(document.fullscreenElement === root && document.exitFullscreen){
+            const exit = document.exitFullscreen();
+            if(exit && exit.catch) exit.catch(() => {});
+          }
+          return;
+        }
+        voiceOwnedFullscreen = document.fullscreenElement === root;
+      }).catch(() => {});
+    }
+  }catch(e){}
+}
+
+function startVoiceFollow(){
+  if(isStandaloneWebApp()){
+    showVoiceAppNotice();
+    return;
+  }
+  // Do not await or alter Version 3's proven startup. Calling it first runs
+  // through getUserMedia() immediately; fullscreen is attempted only after
+  // microphone acquisition has already been initiated.
+  const voiceStart = startPrompter('voice');
+  if(prompterOpen) requestVoiceFullscreen();
+  if(voiceStart && voiceStart.catch) voiceStart.catch(() => {});
+}
+
+function exitVoiceFullscreen(){
+  if(!voiceOwnedFullscreen ||
+     document.fullscreenElement !== document.documentElement ||
+     !document.exitFullscreen){
+    voiceOwnedFullscreen = false;
+    return;
+  }
+  voiceOwnedFullscreen = false;
+  try{
+    const exit = document.exitFullscreen();
+    if(exit && exit.catch) exit.catch(() => {});
+  }catch(e){}
+}
+
+document.addEventListener('fullscreenchange', () => {
+  if(document.fullscreenElement !== document.documentElement){
+    voiceOwnedFullscreen = false;
+  }
+});
+
 /* ---------- Start / stop ---------- */
 async function startPrompter(mode){
   if(startInProgress) return;
@@ -1074,6 +1171,7 @@ async function startPrompter(mode){
 function exitPrompter(){
   prompterOpen = false;
   startInProgress = false;
+  exitVoiceFullscreen();
   isPlaying = false;
   cancelAnimationFrame(prompterAnimationId);
   clearInterval(elapsedInterval);

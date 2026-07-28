@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<title>Teleprompter SOL Fixed 4</title>
+<title>Teleprompter</title>
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black" />
 <meta name="apple-mobile-web-app-title" content="Prompter" />
@@ -1002,35 +1002,6 @@ function updatePct(container){
     Math.min(100, Math.round(container.scrollTop / maxScroll * 100)) + '%';
 }
 
-/* ---------- Fullscreen: Voice Follow only ---------- */
-let voiceFullscreenRequested = false;
-function requestVoiceFullscreen(){
-  const root = document.documentElement;
-  if(document.fullscreenElement || document.webkitFullscreenElement) return;
-  try{
-    if(root.requestFullscreen){
-      voiceFullscreenRequested = true;
-      const request = root.requestFullscreen({navigationUI:'hide'});
-      if(request && request.catch) request.catch(() => {});
-    }else if(root.webkitRequestFullscreen){
-      voiceFullscreenRequested = true;
-      root.webkitRequestFullscreen();
-    }
-  }catch(e){}
-}
-function exitVoiceFullscreen(){
-  if(!voiceFullscreenRequested) return;
-  voiceFullscreenRequested = false;
-  try{
-    if(document.fullscreenElement && document.exitFullscreen){
-      const exit = document.exitFullscreen();
-      if(exit && exit.catch) exit.catch(() => {});
-    }else if(document.webkitFullscreenElement && document.webkitExitFullscreen){
-      document.webkitExitFullscreen();
-    }
-  }catch(e){}
-}
-
 /* ---------- Start / stop ---------- */
 async function startPrompter(mode){
   if(startInProgress) return;
@@ -1044,7 +1015,6 @@ async function startPrompter(mode){
   }
   prompterMode = mode;
   prompterOpen = true;
-  if(mode === 'voice') requestVoiceFullscreen();
 
   buildScript(s.text);
   applyPrompterStyle();
@@ -1104,7 +1074,6 @@ async function startPrompter(mode){
 function exitPrompter(){
   prompterOpen = false;
   startInProgress = false;
-  exitVoiceFullscreen();
   isPlaying = false;
   cancelAnimationFrame(prompterAnimationId);
   clearInterval(elapsedInterval);
